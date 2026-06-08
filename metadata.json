@@ -1,0 +1,6 @@
+{
+  "name": "FlowFab",
+  "description": "Logiciel de suivi de fabrication sous-traitée : gestion des projets, budgets, réalisé, facturation, clients et sous-traitants avec accès sécurisé.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

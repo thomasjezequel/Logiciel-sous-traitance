@@ -1,0 +1,187 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Données d'utilisateur et habilitations CRM",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "nom": { "type": "string" },
+        "role": { "type": "string", "enum": ["Lecteur", "Éditeur", "Administrateur"] },
+        "status": { "type": "string", "enum": ["En attente", "Approuvé", "Suspendu"] },
+        "allowedProjectIds": { "type": "array", "items": { "type": "string" } },
+        "allowedClientIds": { "type": "array", "items": { "type": "string" } },
+        "poste": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "passwordHash": { "type": "string" }
+      },
+      "required": ["id", "email", "nom", "role", "status", "createdAt", "passwordHash"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Fiche client et taux horaire MO associé",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nom": { "type": "string" },
+        "adresse": { "type": "string" },
+        "coutHoraireMO": { "type": "number" },
+        "fraisGenerauxPct": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "nom", "coutHoraireMO"]
+    },
+    "Subcontractor": {
+      "title": "Subcontractor",
+      "description": "Fiche de sous-traitant de fabrication",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nom": { "type": "string" },
+        "adresse": { "type": "string" },
+        "coutHoraireMO": { "type": "number" },
+        "fraisGenerauxPct": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "nom", "coutHoraireMO"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Affaires et Zones gérées",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nomAffaire": { "type": "string" },
+        "nomZone": { "type": "string" },
+        "numCommande": { "type": "string" },
+        "dateCommande": { "type": "string" },
+        "clientId": { "type": "string" },
+        "poidsTotal": { "type": "number" },
+        "poidsPRS": { "type": "number" },
+        "quantiteMl": { "type": "number" },
+        "poidsPDC": { "type": "number" },
+        "protection": { "type": "string" },
+        "dessinateur": { "type": "string" },
+        "conducteurTravaux": { "type": "string" },
+        "delaiLivraisonProtection": { "type": "string" },
+        "delaiLivraisonChantier": { "type": "string" },
+        "sousTraitantId": { "type": "string" },
+        "status": { "type": "string", "enum": ["En cours", "Terminée"] },
+        "typeOuvrage": { "type": "string" },
+        "remarquesPrestation": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "checklistClient": { "type": "object" },
+        "checklistSubcontractor": { "type": "object" }
+      },
+      "required": ["id", "nomAffaire", "nomZone", "clientId", "sousTraitantId", "poidsTotal", "dateCommande", "delaiLivraisonChantier"]
+    },
+    "Budget": {
+      "title": "Budget",
+      "description": "Analyse budgétaire prévisionnelle vendue",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projetId": { "type": "string" },
+        "poidsVendu": { "type": "number" },
+        "budgetFourniture": { "type": "number" },
+        "budgetMainOeuvre": { "type": "number" },
+        "budgetSousTraitance": { "type": "number" },
+        "fraisGenerauxPct": { "type": "number" },
+        "budgetAciers": { "type": "number" },
+        "budgetPeinture": { "type": "number" },
+        "budgetDivers": { "type": "number" },
+        "budgetTransport": { "type": "number" },
+        "budgetProtection": { "type": "number" },
+        "budgetHeuresMO": { "type": "number" }
+      },
+      "required": ["id", "projetId", "poidsVendu", "budgetFourniture", "budgetMainOeuvre", "budgetSousTraitance", "fraisGenerauxPct"]
+    },
+    "Realise": {
+      "title": "Realise",
+      "description": "Dépenses réelles encourues pour la fabrication",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projetId": { "type": "string" },
+        "poidsFabrique": { "type": "number" },
+        "achatsFournitureRealise": { "type": "number" },
+        "achatsMainOeuvreRealise": { "type": "number" },
+        "achatsSousTraitanceRealise": { "type": "number" },
+        "fraisGenerauxPct": { "type": "number" },
+        "achatsAciersRealise": { "type": "number" },
+        "achatsPeintureRealise": { "type": "number" },
+        "achatsDiversRealise": { "type": "number" },
+        "achatsTransportRealise": { "type": "number" },
+        "achatsProtectionRealise": { "type": "number" },
+        "achatsHeuresMO": { "type": "number" }
+      },
+      "required": ["id", "projetId", "poidsFabrique", "achatsFournitureRealise", "achatsMainOeuvreRealise", "achatsSousTraitanceRealise", "fraisGenerauxPct"]
+    },
+    "Billing": {
+      "title": "Billing",
+      "description": "Suivi de facturation de prestation de fabrication",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projetId": { "type": "string" },
+        "projetIds": { "type": "array", "items": { "type": "string" } },
+        "typePrestation": { "type": "string" },
+        "quantiteFacturee": { "type": "number" },
+        "uniteFacturee": { "type": "string", "enum": ["kg", "ml", "heures", "forfait", "Ens", "U"] },
+        "prixUnitaire": { "type": "number" },
+        "etatFacturation": { "type": "string", "enum": ["Brouillon", "Envoyée", "Payée", "Rejetée"] },
+        "dateFacturation": { "type": "string" },
+        "dateEcheance": { "type": "string" },
+        "factureRecue": { "type": "boolean" },
+        "commentaire": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "projetId", "typePrestation", "quantiteFacturee", "uniteFacturee", "prixUnitaire", "etatFacturation", "dateFacturation", "dateEcheance"]
+    },
+    "Metadata": {
+      "title": "Metadata",
+      "description": "Données globales du système",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "typesOuvrage": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Liste de profils et habilitations des utilisateurs"
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Dossier clients"
+    },
+    "/subcontractors/{subcontractorId}": {
+      "schema": "Subcontractor",
+      "description": "Dossier sous-traitants"
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Affaires et zones associées"
+    },
+    "/budgets/{budgetId}": {
+      "schema": "Budget",
+      "description": "Analyses budgétaires prévisionnelles"
+    },
+    "/realises/{realiseId}": {
+      "schema": "Realise",
+      "description": "Analyses des coûts de fabrication de l'affaire"
+    },
+    "/billings/{billingId}": {
+      "schema": "Billing",
+      "description": "Tableaux des flux de facturation"
+    },
+    "/metadata/{metadataId}": {
+      "schema": "Metadata",
+      "description": "Configurations globales"
+    }
+  }
+}

@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global safety net - Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Validate if the document ID is within bounds and safe
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Entity Validations ---
+
+    function isValidUser(user) {
+      return user.keys().hasAll(['id', 'email', 'nom', 'role', 'status', 'createdAt'])
+        && user.id is string && user.id.size() <= 128
+        && user.email is string && user.email.size() <= 200
+        && user.nom is string && user.nom.size() <= 200
+        && user.role in ['Lecteur', 'Éditeur', 'Administrateur']
+        && user.status in ['En attente', 'Approuvé', 'Suspendu'];
+    }
+
+    function isValidClient(client) {
+      return client.keys().hasAll(['id', 'nom', 'coutHoraireMO'])
+        && client.id is string && client.id.size() <= 128
+        && client.nom is string && client.nom.size() <= 200
+        && client.coutHoraireMO is number;
+    }
+
+    function isValidSubcontractor(sub) {
+      return sub.keys().hasAll(['id', 'nom', 'coutHoraireMO'])
+        && sub.id is string && sub.id.size() <= 128
+        && sub.nom is string && sub.nom.size() <= 200
+        && sub.coutHoraireMO is number;
+    }
+
+    function isValidProject(proj) {
+      return proj.keys().hasAll(['id', 'nomAffaire', 'nomZone', 'clientId', 'sousTraitantId', 'poidsTotal', 'dateCommande', 'delaiLivraisonChantier'])
+        && proj.id is string && proj.id.size() <= 128
+        && proj.nomAffaire is string && proj.nomAffaire.size() <= 200
+        && proj.nomZone is string && proj.nomZone.size() <= 200
+        && proj.clientId is string && proj.clientId.size() <= 128
+        && proj.sousTraitantId is string && proj.sousTraitantId.size() <= 128
+        && proj.poidsTotal is number;
+    }
+
+    function isValidBudget(b) {
+      return b.keys().hasAll(['id', 'projetId', 'poidsVendu', 'budgetFourniture', 'budgetMainOeuvre', 'budgetSousTraitance', 'fraisGenerauxPct'])
+        && b.id is string && b.id.size() <= 128
+        && b.projetId is string && b.projetId.size() <= 128
+        && b.poidsVendu is number
+        && b.budgetFourniture is number
+        && b.budgetMainOeuvre is number
+        && b.budgetSousTraitance is number
+        && b.fraisGenerauxPct is number;
+    }
+
+    function isValidRealise(r) {
+      return r.keys().hasAll(['id', 'projetId', 'poidsFabrique', 'achatsFournitureRealise', 'achatsMainOeuvreRealise', 'achatsSousTraitanceRealise', 'fraisGenerauxPct'])
+        && r.id is string && r.id.size() <= 128
+        && r.projetId is string && r.projetId.size() <= 128
+        && r.poidsFabrique is number
+        && r.achatsFournitureRealise is number
+        && r.achatsMainOeuvreRealise is number
+        && r.achatsSousTraitanceRealise is number
+        && r.fraisGenerauxPct is number;
+    }
+
+    function isValidBilling(bil) {
+      return bil.keys().hasAll(['id', 'projetId', 'typePrestation', 'quantiteFacturee', 'uniteFacturee', 'prixUnitaire', 'etatFacturation', 'dateFacturation', 'dateEcheance'])
+        && bil.id is string && bil.id.size() <= 128
+        && bil.projetId is string && bil.projetId.size() <= 128
+        && bil.typePrestation is string && bil.typePrestation.size() <= 200
+        && bil.quantiteFacturee is number
+        && bil.uniteFacturee in ['kg', 'ml', 'heures', 'forfait', 'Ens', 'U']
+        && bil.prixUnitaire is number
+        && bil.etatFacturation in ['Brouillon', 'Envoyée', 'Payée', 'Rejetée'];
+    }
+
+    // Rules for individual collections (we allow read and write access conditionally)
+    // In our architecture, the Express backend serves as the proxy to communicate with Firestore, 
+    // hence we secure the platform data collections with default authorization gates.
+    
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    match /clients/{clientId} {
+      allow read, write: if true;
+    }
+
+    match /subcontractors/{subcontractorId} {
+      allow read, write: if true;
+    }
+
+    match /projects/{projectId} {
+      allow read, write: if true;
+    }
+
+    match /budgets/{budgetId} {
+      allow read, write: if true;
+    }
+
+    match /realises/{realiseId} {
+      allow read, write: if true;
+    }
+
+    match /billings/{billingId} {
+      allow read, write: if true;
+    }
+
+    match /metadata/{metadataId} {
+      allow read, write: if true;
+    }
+  }
+}

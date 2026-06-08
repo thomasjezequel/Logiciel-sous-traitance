@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Custom dark mode classes to support toggle across browsers and layout containers */
+.dark body {
+  background-color: #0f172a !important; /* bg-slate-900 */
+  color: #f1f5f9 !important; /* text-slate-100 */
+}
+
+/* Override rules for generic sheets and cards in dark mode */
+.dark .bg-white {
+  background-color: #1e293b !important; /* bg-slate-800 */
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+.dark .bg-slate-50, .dark .bg-slate-50\/50, .dark .bg-slate-50\/60, .dark .bg-slate-50\/55, .dark .bg-slate-100\/30 {
+  background-color: #1e293b !important;
+}
+
+.dark .bg-slate-100 {
+  background-color: #0f172a !important;
+}
+
+.dark .text-slate-900, .dark .text-slate-950, .dark .text-slate-800, .dark .text-gray-900, .dark h1, .dark h2, .dark h3 {
+  color: #ffffff !important;
+}
+
+.dark .text-gray-500, .dark .text-slate-500, .dark .text-slate-600 {
+  color: #e2e8f0 !important;
+}
+
+.dark .text-slate-700, .dark .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+.dark input, .dark select, .dark textarea {
+  background-color: #1e293b !important;
+  color: #ffffff !important;
+  border-color: #475569 !important;
+}
+
+.dark .border-slate-200, .dark .border-slate-100, .dark .border-slate-150, .dark .divide-slate-200, .dark .divide-slate-100 {
+  border-color: #475569 !important;
+}
+
+.dark .shadow-2xs, .dark .shadow-xs, .dark .shadow-sm {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5) !important;
+}
+
+.dark .text-gray-400 {
+  color: #cbd5e1 !important;
+}
+
+/* Nav tabs custom style overrides for ultra-high contrast dark mode */
+.dark nav button {
+  color: #e2e8f0 !important; /* Highly readable silver for inactive tab text */
+}
+
+.dark nav button:hover {
+  background-color: #334155 !important;
+  color: #ffffff !important;
+}
+
+.dark nav button.bg-slate-900 {
+  background-color: #f8fafc !important; /* Crisp white background for active state */
+  color: #0f172a !important;             /* Deep dark slate text for absolute legibility */
+  font-weight: 700 !important;
+  border: 1px solid #ffffff !important;
+}
+
+.dark nav button.bg-red-700 {
+  background-color: #fee2e2 !important; /* Soft high-contrast light red */
+  color: #991b1b !important;             /* Dark red text */
+  font-weight: 700 !important;
+}
+
+/* Custom styles to prevent layout from breaking and overflow horizontal bars */
+.overflow-x-auto {
+  scrollbar-width: thin;
+}
