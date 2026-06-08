@@ -8,6 +8,8 @@ import {
   Realise 
 } from "../types";
 
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
 let tokenCache: string | null = typeof window !== "undefined" ? localStorage.getItem("flowfab_token") : null;
 
 export const api = {
@@ -40,7 +42,7 @@ export const api = {
       headers.set("Content-Type", "application/json");
     }
 
-    const response = await fetch(endpoint, {
+    const response = await fetch(API_BASE + endpoint, {
       ...options,
       headers
     });

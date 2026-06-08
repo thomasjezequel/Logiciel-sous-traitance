@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
@@ -22,6 +23,10 @@ const PORT = 3000;
 const DB_FILE = path.join(process.cwd(), "db.json");
 
 // Middleware to parse JSON
+app.use(cors({
+  origin: "https://flowbase-29.web.app",
+  credentials: true
+}));
 app.use(express.json());
 
 // Type-safe DB schema
