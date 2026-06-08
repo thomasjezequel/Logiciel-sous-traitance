@@ -25,6 +25,10 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
       const style = document.createElement("style");
       style.id = "print-temporary-style";
       style.innerHTML = `
+        @page {
+          size: A4 portrait;
+          margin: 12mm 15mm 12mm 15mm;
+        }
         @media print {
           body > * {
             display: none !important;
@@ -39,12 +43,20 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
             overflow: visible !important;
             background: white !important;
             color: black !important;
-            padding: 20px !important;
+            padding: 0 !important;
             margin: 0 !important;
+            font-size: 11px !important;
           }
           .no-print, .print\\:hidden, button {
             display: none !important;
           }
+          table {
+            width: 100% !important;
+            font-size: 10px !important;
+          }
+          h1 { font-size: 14px !important; }
+          h2 { font-size: 11px !important; }
+          h3 { font-size: 10px !important; }
           /* Ensure backgrounds print correctly */
           * {
             -webkit-print-color-adjust: exact !important;

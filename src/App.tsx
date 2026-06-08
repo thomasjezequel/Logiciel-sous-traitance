@@ -40,6 +40,7 @@ import PrestationPrint from "./components/PrestationPrint";
 import ProjectModal from "./components/ProjectModal";
 import BillingModal from "./components/BillingModal";
 import BudgetRealiseModal from "./components/BudgetRealiseModal";
+import flowfabLogo from "./assets/images/flowfab_logo_1780546723025.png";
 import ClientSubModal from "./components/ClientSubModal";
 import AdminPanel from "./components/AdminPanel";
 import DashboardView from "./components/DashboardView";
@@ -465,7 +466,7 @@ export default function App() {
             <div className="flex items-center gap-3">
               {/* BRAND IMAGE LOGO */}
               <img 
-                src="/src/assets/images/flowfab_logo_1780546723025.png" 
+                src={flowfabLogo} 
                 alt="FlowFab Premium Logo" 
                 className="w-10 h-10 object-contain rounded-lg shadow-md border border-slate-700/50 bg-white"
                 referrerPolicy="no-referrer"
@@ -649,7 +650,7 @@ export default function App() {
       <header className="bg-slate-900 text-white px-4 md:px-8 py-3 flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 shadow-sm print:hidden">
         <div className="flex items-center gap-2">
           <img 
-            src="/src/assets/images/flowfab_logo_1780546723025.png" 
+            src={flowfabLogo} 
             alt="FlowFab Logo" 
             className="w-8 h-8 rounded-md bg-white p-0.5 object-contain"
             referrerPolicy="no-referrer"
