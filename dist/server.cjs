@@ -23,6 +23,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // server.ts
 var import_express = __toESM(require("express"), 1);
+var import_cors = __toESM(require("cors"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_fs = __toESM(require("fs"), 1);
 var import_vite = require("vite");
@@ -31,6 +32,10 @@ var import_firestore = require("firebase/firestore");
 var app = (0, import_express.default)();
 var PORT = 3e3;
 var DB_FILE = import_path.default.join(process.cwd(), "db.json");
+app.use((0, import_cors.default)({
+  origin: "https://flowbase-29.web.app",
+  credentials: true
+}));
 app.use(import_express.default.json());
 var DEFAULT_DB = {
   users: [
