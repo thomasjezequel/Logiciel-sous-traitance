@@ -305,10 +305,12 @@ if (firebaseConfig) {
 async function syncToFirestore(col: string, id: string, data: any) {
   if (!firestoreDb) return;
   try {
-    await setDoc(doc(firestoreDb, col, id), data);
+    // Nettoyer les valeurs undefined non supportées par Firestore
+    const cleanData = JSON.parse(JSON.stringify(data));
+    await setDoc(doc(firestoreDb, col, id), cleanData);
     console.log(`[Firebase] Document synced successfully to Firestore: ${col}/${id}`);
   } catch (err) {
-    console.error(`[Firebase] Error syncing ${col}/${id}:`, err);
+    console.error(`[Firebase] Error syncing ${col}/${id}:`, JSON.stringify(err));
   }
 }
 
