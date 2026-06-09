@@ -1,6 +1,7 @@
 import React, { useRef } from "react";
 import { Project, Budget, Realise, Client, Subcontractor } from "../types";
 import { X, Printer, FileText, CheckCircle2, AlertTriangle, Coins, TrendingUp } from "lucide-react";
+import flowfabLogo from "../assets/images/flowfab_logo_1780546723025.png";
 
 interface BudgetRealisePrintModalProps {
   isOpen: boolean;
@@ -158,7 +159,7 @@ export default function BudgetRealisePrintModal({
           {/* Header */}
           <div className="border-b-2 border-slate-900 pb-5 flex justify-between items-start gap-4">
             <div>
-              <span className="text-xs font-bold text-amber-600 uppercase tracking-widest font-mono">FLOWFAB • ATELIER</span>
+              <img src={flowfabLogo} alt="FlowFab" className="h-12 w-auto mb-1" />
               <h1 className="text-xl font-black text-slate-950 mt-0.5 uppercase tracking-tight">RAPPORT DE SYNTHÈSE COMPATIBILITÉ BUDGET-RÉEL</h1>
               <p className="text-[11px] text-gray-500 mt-0.5">Décision de facturation & réconciliation financière d'Affaire-Zone</p>
             </div>

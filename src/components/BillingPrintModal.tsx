@@ -1,6 +1,7 @@
 import React, { useRef } from "react";
 import { Project, Budget, Realise, Billing, Subcontractor, Client, User } from "../types";
 import { X, Printer, CheckSquare, Award, Coins, Scale, FileText } from "lucide-react";
+import flowfabLogo from "../assets/images/flowfab_logo_1780546723025.png";
 
 interface BillingPrintModalProps {
   isOpen: boolean;
@@ -103,7 +104,7 @@ export default function BillingPrintModal({
       style.innerHTML = `
         @page {
           size: A4 portrait;
-          margin: 12mm 15mm 12mm 15mm;
+          margin: 10mm 12mm 10mm 12mm;
         }
         @media print {
           body > * {
@@ -121,19 +122,45 @@ export default function BillingPrintModal({
             color: black !important;
             padding: 0 !important;
             margin: 0 !important;
-            font-size: 11px !important;
+            font-size: 9px !important;
           }
           .no-print, .print\\:hidden, button {
             display: none !important;
           }
+          h1 { font-size: 13px !important; line-height: 1.2 !important; }
+          h2 { font-size: 10px !important; }
+          h3 { font-size: 9px !important; }
+          p  { font-size: 9px !important; }
           table {
             width: 100% !important;
-            font-size: 10px !important;
+            font-size: 8px !important;
+            border-collapse: collapse !important;
           }
-          h1 { font-size: 14px !important; }
-          h2 { font-size: 11px !important; }
-          h3 { font-size: 10px !important; }
-          /* Ensure backgrounds print correctly */
+          table th, table td {
+            padding: 3px 5px !important;
+            white-space: normal !important;
+            word-break: break-word !important;
+          }
+          table th:first-child, table td:first-child {
+            width: 38% !important;
+          }
+          table th:not(:first-child), table td:not(:first-child) {
+            width: 15.5% !important;
+            text-align: right !important;
+          }
+          .overflow-x-auto {
+            overflow: visible !important;
+          }
+          .gap-8 { gap: 12px !important; }
+          .gap-6 { gap: 10px !important; }
+          .p-8, .p-12 { padding: 8px !important; }
+          .p-4 { padding: 6px !important; }
+          .my-8 { margin-top: 8px !important; margin-bottom: 8px !important; }
+          .my-6 { margin-top: 6px !important; margin-bottom: 6px !important; }
+          .pb-6 { padding-bottom: 6px !important; }
+          .pt-8 { padding-top: 8px !important; }
+          .space-y-4 > * + * { margin-top: 6px !important; }
+          .space-y-3 > * + * { margin-top: 4px !important; }
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -186,7 +213,7 @@ export default function BillingPrintModal({
           {/* Header Frame */}
           <div className="border-b-2 border-slate-900 pb-6 flex justify-between items-start gap-4">
             <div>
-              <span className="text-xs font-bold text-amber-600 uppercase tracking-widest font-mono">FLOWFAB</span>
+              <img src={flowfabLogo} alt="FlowFab" className="h-12 w-auto mb-2" />
               <h1 className="text-2xl font-black text-slate-900 mt-1 uppercase tracking-tight">RAPPORT FINANCIER D'AFFAIRE</h1>
               <p className="text-xs text-gray-500 mt-1">Analyse de rentabilité de fabrication & justification du prix de facturation</p>
             </div>

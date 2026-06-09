@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { Client, Subcontractor, Project, User } from "../types";
 import { Printer, ArrowLeft, Download, Shield, Landmark } from "lucide-react";
+import flowfabLogo from "../assets/images/flowfab_logo_1780546723025.png";
 
 interface PrestationPrintProps {
   project: Project;
@@ -105,7 +106,7 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
         {/* Header Block */}
         <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8">
           <div>
-            <div className="text-2xl font-black text-teal-600 tracking-wider">FLOW<span className="text-slate-800">FAB</span></div>
+            <img src={flowfabLogo} alt="FlowFab" className="h-12 w-auto mb-1" />
             <p className="text-xs text-gray-500 font-mono mt-1">Éditeur : {user ? user.nom : "Thomas Jézéquel"}</p>
           </div>
           <div className="text-right">
