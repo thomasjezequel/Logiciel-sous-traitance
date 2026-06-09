@@ -159,7 +159,7 @@ export default function BudgetRealisePrintModal({
           {/* Header */}
           <div className="border-b-2 border-slate-900 pb-5 flex justify-between items-start gap-4">
             <div>
-              <img src={flowfabLogo} alt="FlowFab" className="h-12 w-auto mb-1" />
+              <img src={flowfabLogo} alt="FlowFab" style={{width: "113px", height: "113px", objectFit: "contain"}} className="mb-1" />
               <h1 className="text-xl font-black text-slate-950 mt-0.5 uppercase tracking-tight">RAPPORT DE SYNTHÈSE COMPATIBILITÉ BUDGET-RÉEL</h1>
               <p className="text-[11px] text-gray-500 mt-0.5">Décision de facturation & réconciliation financière d'Affaire-Zone</p>
             </div>

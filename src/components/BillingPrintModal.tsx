@@ -213,7 +213,7 @@ export default function BillingPrintModal({
           {/* Header Frame */}
           <div className="border-b-2 border-slate-900 pb-6 flex justify-between items-start gap-4">
             <div>
-              <img src={flowfabLogo} alt="FlowFab" className="h-12 w-auto mb-2" />
+              <img src={flowfabLogo} alt="FlowFab" style={{width: "113px", height: "113px", objectFit: "contain"}} className="mb-2" />
               <h1 className="text-2xl font-black text-slate-900 mt-1 uppercase tracking-tight">RAPPORT FINANCIER D'AFFAIRE</h1>
               <p className="text-xs text-gray-500 mt-1">Analyse de rentabilité de fabrication & justification du prix de facturation</p>
             </div>

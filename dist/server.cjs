@@ -262,7 +262,7 @@ function saveDatabase() {
   }
 }
 var firebaseConfigPath = import_path.default.join(process.cwd(), "firebase-applet-config.json");
-var firebaseConfig = import_fs.default.existsSync(firebaseConfigPath) ? JSON.parse(import_fs.default.readFileSync(firebaseConfigPath, "utf-8")) : null;
+var firebaseConfig = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : import_fs.default.existsSync(firebaseConfigPath) ? JSON.parse(import_fs.default.readFileSync(firebaseConfigPath, "utf-8")) : null;
 var firebaseApp = null;
 var firestoreDb = null;
 if (firebaseConfig) {
@@ -282,10 +282,11 @@ if (firebaseConfig) {
 async function syncToFirestore(col, id, data) {
   if (!firestoreDb) return;
   try {
-    await (0, import_firestore.setDoc)((0, import_firestore.doc)(firestoreDb, col, id), data);
+    const cleanData = JSON.parse(JSON.stringify(data));
+    await (0, import_firestore.setDoc)((0, import_firestore.doc)(firestoreDb, col, id), cleanData);
     console.log(`[Firebase] Document synced successfully to Firestore: ${col}/${id}`);
   } catch (err) {
-    console.error(`[Firebase] Error syncing ${col}/${id}:`, err);
+    console.error(`[Firebase] Error syncing ${col}/${id}:`, JSON.stringify(err));
   }
 }
 async function deleteFromFirestore(col, id) {

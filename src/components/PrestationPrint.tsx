@@ -106,7 +106,7 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
         {/* Header Block */}
         <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8">
           <div>
-            <img src={flowfabLogo} alt="FlowFab" className="h-12 w-auto mb-1" />
+            <img src={flowfabLogo} alt="FlowFab" style={{width: "113px", height: "113px", objectFit: "contain"}} className="mb-1" />
             <p className="text-xs text-gray-500 font-mono mt-1">Éditeur : {user ? user.nom : "Thomas Jézéquel"}</p>
           </div>
           <div className="text-right">
