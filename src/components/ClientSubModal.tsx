@@ -18,11 +18,14 @@ export default function ClientSubModal({ isOpen, onClose, type, item, onSave }: 
     fraisGenerauxPct: 10
   });
 
+  const [externeGroupe, setExterneGroupe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (item) {
+      const isExterne = (item as any).externeGroupe === true;
+      setExterneGroupe(isExterne);
       setFormData({
         nom: item.nom || "",
         adresse: item.adresse || "",
@@ -30,6 +33,7 @@ export default function ClientSubModal({ isOpen, onClose, type, item, onSave }: 
         fraisGenerauxPct: item.fraisGenerauxPct !== undefined ? item.fraisGenerauxPct : 10
       });
     } else {
+      setExterneGroupe(false);
       setFormData({
         nom: "",
         adresse: "",
@@ -59,7 +63,10 @@ export default function ClientSubModal({ isOpen, onClose, type, item, onSave }: 
     }
     try {
       setLoading(true);
-      await onSave(type, formData);
+      const dataToSave = externeGroupe
+        ? { nom: formData.nom, adresse: formData.adresse, externeGroupe: true, coutHoraireMO: 0, fraisGenerauxPct: 0 }
+        : { ...formData, externeGroupe: false };
+      await onSave(type, dataToSave);
       onClose();
     } catch (err: any) {
       setError(err?.message || "Échec d'enregistrement.");
@@ -108,7 +115,27 @@ export default function ClientSubModal({ isOpen, onClose, type, item, onSave }: 
             />
           </div>
 
+          {/* Checkbox Externe Groupe (sous-traitant uniquement) */}
+          {type === "subcontractor" && (
+            <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <input
+                type="checkbox"
+                id="externeGroupe"
+                checked={externeGroupe}
+                onChange={(e) => setExterneGroupe(e.target.checked)}
+                className="w-4 h-4 accent-teal-600 cursor-pointer"
+              />
+              <label htmlFor="externeGroupe" className="text-sm font-semibold text-amber-800 cursor-pointer">
+                Sous-traitant extérieur au groupe
+                <span className="block text-xs font-normal text-amber-600 mt-0.5">
+                  Coût horaire et frais généraux non applicables
+                </span>
+              </label>
+            </div>
+          )}
+
           {/* Hourly Labour Cost Field */}
+          {!externeGroupe && (
           <div>
             <label className="text-xs font-semibold text-gray-500 block mb-1">
               Coût horaire standard de la main d'œuvre ({type === "client" ? "Vendu" : "Achat"}) (€/h)
@@ -122,8 +149,10 @@ export default function ClientSubModal({ isOpen, onClose, type, item, onSave }: 
               className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
             />
           </div>
+          )}
 
           {/* Frais généraux (%) Field */}
+          {!externeGroupe && (
           <div>
             <label className="text-xs font-semibold text-gray-500 block mb-1">
               Paramètre de frais généraux (%)
@@ -138,6 +167,7 @@ export default function ClientSubModal({ isOpen, onClose, type, item, onSave }: 
               className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
             />
           </div>
+          )}
 
           {/* Full Physical/Billing Address Field */}
           <div>
