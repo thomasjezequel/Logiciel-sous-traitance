@@ -278,9 +278,11 @@ import { initializeApp } from "firebase/app";
 import { initializeFirestore, collection, doc, getDocs, getDoc, setDoc, deleteDoc, setLogLevel } from "firebase/firestore";
 
 const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
-const firebaseConfig = fs.existsSync(firebaseConfigPath)
-  ? JSON.parse(fs.readFileSync(firebaseConfigPath, "utf-8"))
-  : null;
+const firebaseConfig = process.env.FIREBASE_CONFIG
+  ? JSON.parse(process.env.FIREBASE_CONFIG)
+  : fs.existsSync(firebaseConfigPath)
+    ? JSON.parse(fs.readFileSync(firebaseConfigPath, "utf-8"))
+    : null;
 
 let firebaseApp: any = null;
 let firestoreDb: any = null;
