@@ -375,9 +375,9 @@ export default function BudgetRealiseModal({
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-slate-700">
-                    <span className="font-semibold text-slate-500">Poids à fabriquer :</span>
+                    <span className="font-semibold text-slate-500">Poids fabriqué (réf.) :</span>
                     <span className="font-medium font-mono text-slate-600">
-                      {(project.poidsTotal || 0).toLocaleString()} kg
+                      {(rData.poidsFabrique || 0).toLocaleString()} kg
                     </span>
                   </div>
                   <div className="flex justify-between items-center bg-rose-50/50 p-1.5 rounded text-rose-950 font-bold mt-1">
@@ -385,8 +385,8 @@ export default function BudgetRealiseModal({
                     <span className="font-mono">
                       {(() => {
                         const totalCons = (rData.poidsUtilise || 0) + (rData.poidsSousTraite || 0);
-                        const targetWeight = project.poidsTotal || 1;
-                        const scrapRate = targetWeight > 0 ? ((totalCons - targetWeight) / targetWeight) * 100 : 0;
+                        const poidsFabrique = rData.poidsFabrique || 0;
+                        const scrapRate = poidsFabrique > 0 ? ((totalCons / poidsFabrique) - 1) * 100 : 0;
                         return `${scrapRate > 0 ? "+" : ""}${scrapRate.toFixed(2)} %`;
                       })()}
                     </span>
