@@ -10,8 +10,10 @@ import {
   Wallet, 
   Building,
   Activity,
-  RotateCcw
+  RotateCcw,
+  Printer
 } from "lucide-react";
+import DashboardPrintModal from "./DashboardPrintModal";
 
 interface DashboardViewProps {
   projects: Project[];
@@ -25,8 +27,10 @@ interface DashboardViewProps {
 export default function DashboardView({ projects, budgets, realises, billings, subcontractors, clients }: DashboardViewProps) {
   // Filtres Globaux
   const [selectedSub, setSelectedSub] = useState<string>("");
+  const [selectedClient, setSelectedClient] = useState<string>("");
   const [dateDebut, setDateDebut] = useState<string>("");
   const [dateFin, setDateFin] = useState<string>("");
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   const handleQuickPeriod = (type: "J" | "S" | "M" | "T" | "Se" | "A" | "X") => {
     if (type === "X") {
@@ -91,6 +95,10 @@ export default function DashboardView({ projects, budgets, realises, billings, s
 
   // Filtrage des données primaires
   const filteredProjects = projects.filter(p => {
+    // Filtre Client
+    if (selectedClient && p.clientId !== selectedClient) {
+      return false;
+    }
     // Filtre Sous-traitant
     if (selectedSub && p.sousTraitantId !== selectedSub) {
       return false;
@@ -178,6 +186,7 @@ export default function DashboardView({ projects, budgets, realises, billings, s
   // Réinitialiser les filtres
   const handleResetFilters = () => {
     setSelectedSub("");
+    setSelectedClient("");
     setDateDebut("");
     setDateFin("");
   };
@@ -188,6 +197,24 @@ export default function DashboardView({ projects, budgets, realises, billings, s
       {/* Barre de Filtres Globaux */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-3xs flex flex-wrap gap-4 items-end justify-between">
         <div className="flex flex-wrap gap-4 items-end">
+          {/* Client */}
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Filtre Client</span>
+            <div className="relative">
+              <select
+                value={selectedClient}
+                onChange={e => setSelectedClient(e.target.value)}
+                className="text-xs bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg pl-3 pr-8 py-2 font-semibold text-slate-700 focus:outline-teal-500 appearance-none cursor-pointer min-w-[180px]"
+              >
+                <option value="">Tous les clients</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.nom}</option>
+                ))}
+              </select>
+              <Users className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+            </div>
+          </div>
+
           {/* Sous-traitant */}
           <div className="space-y-1">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Filtre Partenaire</span>
@@ -195,7 +222,7 @@ export default function DashboardView({ projects, budgets, realises, billings, s
               <select
                 value={selectedSub}
                 onChange={e => setSelectedSub(e.target.value)}
-                className="text-xs bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg pl-3 pr-8 py-2 font-semibold text-slate-700 focus:outline-teal-500 appearance-none cursor-pointer min-w-[200px]"
+                className="text-xs bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg pl-3 pr-8 py-2 font-semibold text-slate-700 focus:outline-teal-500 appearance-none cursor-pointer min-w-[180px]"
               >
                 <option value="">Tous les sous-traitants</option>
                 {subcontractors.map(sub => (
@@ -265,16 +292,27 @@ export default function DashboardView({ projects, budgets, realises, billings, s
           </div>
         </div>
 
-        {/* Bouton Réinitialiser */}
-        {(selectedSub || dateDebut || dateFin) && (
+        {/* Boutons d'actions groupés */}
+        <div className="flex items-center gap-2.5">
           <button
-            onClick={handleResetFilters}
-            className="text-xs bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5"
+            onClick={() => setIsPrintModalOpen(true)}
+            type="button"
+            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-850 font-bold px-3 py-2 border border-slate-250 rounded-lg transition-colors flex items-center gap-1.5 shadow-3xs cursor-pointer"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Réinitialiser les filtres
+            <Printer className="w-3.5 h-3.5 text-teal-600" />
+            Imprimer la synthèse
           </button>
-        )}
+
+          {(selectedSub || selectedClient || dateDebut || dateFin) && (
+            <button
+              onClick={handleResetFilters}
+              className="text-xs bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Réinitialiser
+            </button>
+          )}
+        </div>
       </div>
 
       {/* KPI Cards (Uniquement Tonnage Total & Tonnage Fabriqué) */}
@@ -334,15 +372,15 @@ export default function DashboardView({ projects, budgets, realises, billings, s
 
       </div>
 
-      {/* Two columns: Suivi des ateliers & Relances de Trésorerie */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Three columns: Suivi des ateliers, Terminés de fabriquer mais non facturés, and Relances de Trésorerie */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Encart 1: Affaires en cours de fabrication (non facturées) */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-4">
           <div>
             <span className="text-xs font-bold text-indigo-700 uppercase tracking-widest block font-mono">SUIVI DES ATELIERS</span>
-            <h3 className="text-base font-bold text-slate-900">Affaires & Zones en Cours de Fabrication <span className="text-sm font-normal text-slate-400">(Non facturées)</span></h3>
-            <p className="text-xs text-slate-400">Liste des chantiers actuellement en cours de production</p>
+            <h3 className="text-sm font-bold text-slate-900 block min-h-[36px]">Affaires en Cours de Fab. <span className="text-xs font-normal text-slate-400 block">(Non facturées)</span></h3>
+            <p className="text-xs text-slate-400 mt-1">Chantiers actuellement en cours de production</p>
           </div>
           <div className="max-h-[300px] overflow-y-auto space-y-3 pr-1">
             {(() => {
@@ -366,19 +404,19 @@ export default function DashboardView({ projects, budgets, realises, billings, s
                 return (
                   <div key={proj.id} className="p-3 bg-indigo-50/40 border border-indigo-100 rounded-lg text-xs space-y-1 hover:bg-indigo-50/70 transition">
                     <div className="flex justify-between items-start">
-                      <span className="font-extrabold text-slate-900 uppercase">{proj.nomAffaire} - {proj.nomZone}</span>
-                      <span className="font-mono bg-indigo-100 text-indigo-800 text-[9px] px-1.5 py-0.5 rounded-full font-bold">En fabrication</span>
+                      <span className="font-extrabold text-slate-900 uppercase leading-tight">{proj.nomAffaire} - {proj.nomZone}</span>
+                      <span className="font-mono bg-indigo-100 text-indigo-800 text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0">En cours</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-1.5 pt-1 text-slate-500">
+                    <div className="grid grid-cols-2 gap-1 pt-1 text-slate-500">
                       <div>
                         <span className="font-bold text-slate-700">Client:</span> {client ? client.nom : "Inconnu"}
                       </div>
                       <div>
                         <span className="font-bold text-slate-700">Sous-traitant:</span> {sub ? sub.nom : "Inconnu"}
                       </div>
-                      <div className="col-span-2 text-slate-400 flex justify-between">
-                        <span>Poids: <strong className="text-slate-700">{proj.poidsTotal.toLocaleString("fr-FR")} kg</strong> {proj.poidsPRS ? `(PRS: ${proj.poidsPRS} kg)` : ""}</span>
-                        <span>Livraison: <strong className="text-slate-700">{proj.delaiLivraisonChantier ? new Date(proj.delaiLivraisonChantier).toLocaleDateString("fr-FR") : "-"}</strong></span>
+                      <div className="col-span-2 text-slate-400 flex justify-between mt-1 pt-1 border-t border-slate-100/60 italic">
+                        <span>Poids: <strong className="text-slate-700 font-mono">{proj.poidsTotal.toLocaleString("fr-FR")} kg</strong></span>
+                        <span>Livraison: <strong className="text-slate-650">{proj.delaiLivraisonChantier ? new Date(proj.delaiLivraisonChantier).toLocaleDateString("fr-FR") : "-"}</strong></span>
                       </div>
                     </div>
                   </div>
@@ -388,12 +426,63 @@ export default function DashboardView({ projects, budgets, realises, billings, s
           </div>
         </div>
 
-        {/* Encart 2: Affaires facturées mais non payées */}
+        {/* Encart 2: Affaires terminées de fabriquer (non facturées) */}
+        <div className="bg-white p-6 rounded-xl border border-rose-200 shadow-2xs space-y-4">
+          <div>
+            <span className="text-xs font-bold text-rose-700 uppercase tracking-widest block font-mono">FIN DE PRODUCTION</span>
+            <h3 className="text-sm font-bold text-slate-900 block min-h-[36px]">Terminé de Fabriquer <span className="text-xs font-normal text-slate-400 block">(Non facturées)</span></h3>
+            <p className="text-xs text-slate-400 mt-1">Chantiers finis en atelier prêts pour facturation</p>
+          </div>
+          <div className="max-h-[300px] overflow-y-auto space-y-3 pr-1">
+            {(() => {
+              const invoicedProjectIds = new Set(
+                filteredBillings
+                  .filter(b => b.etatFacturation === BillingStatus.ENVOYEE || b.etatFacturation === BillingStatus.PAYEE)
+                  .flatMap(b => [b.projetId, ...(b.projetIds || [])])
+              );
+              
+              const finishedUnbilledProjects = filteredProjects.filter(
+                p => p.status === ProjectStatus.TERMINEE && !invoicedProjectIds.has(p.id)
+              );
+
+              if (finishedUnbilledProjects.length === 0) {
+                return <p className="text-xs text-slate-400 italic py-6 text-center bg-slate-50 rounded-lg">Aucune affaire terminée non facturée.</p>;
+              }
+
+              return finishedUnbilledProjects.map(proj => {
+                const client = clients.find(c => c.id === proj.clientId);
+                const sub = subcontractors.find(s => s.id === proj.sousTraitantId);
+                return (
+                  <div key={proj.id} className="p-3 bg-rose-50/40 border border-rose-100 rounded-lg text-xs space-y-1 hover:bg-rose-50/70 transition">
+                    <div className="flex justify-between items-start">
+                      <span className="font-extrabold text-rose-950 uppercase leading-tight">{proj.nomAffaire} - {proj.nomZone}</span>
+                      <span className="font-mono bg-rose-100 text-rose-800 text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 font-extrabold">Fini</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 pt-1 text-slate-500">
+                      <div>
+                        <span className="font-bold text-slate-700">Client:</span> {client ? client.nom : "Inconnu"}
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-700">Sous-traitant:</span> {sub ? sub.nom : "Inconnu"}
+                      </div>
+                      <div className="col-span-2 text-slate-400 flex justify-between mt-1 pt-1 border-t border-slate-100/60 italic">
+                        <span>Poids: <strong className="text-slate-700 font-mono">{proj.poidsTotal.toLocaleString("fr-FR")} kg</strong></span>
+                        <span>Délai: <strong className="text-slate-650">{proj.delaiLivraisonChantier ? new Date(proj.delaiLivraisonChantier).toLocaleDateString("fr-FR") : "-"}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
+
+        {/* Encart 3: Affaires facturées mais non payées */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-4">
           <div>
             <span className="text-xs font-bold text-amber-700 uppercase tracking-widest block font-mono">RELANCES DE TRÉSORERIE</span>
-            <h3 className="text-base font-bold text-slate-900">Affaires Facturées <span className="text-sm font-normal text-slate-400">(Non payées)</span></h3>
-            <p className="text-xs text-slate-400">Encours de factures envoyées ou brouillons en attente de paiement</p>
+            <h3 className="text-sm font-bold text-slate-900 block min-h-[36px]">Affaires Facturées <span className="text-xs font-normal text-slate-400 block">(Non payées)</span></h3>
+            <p className="text-xs text-slate-400 mt-1">Encours de factures ou de brouillons en attente de paiement</p>
           </div>
           <div className="max-h-[300px] overflow-y-auto space-y-3 pr-1">
             {(() => {
@@ -417,10 +506,10 @@ export default function DashboardView({ projects, budgets, realises, billings, s
                 const allZones = [primaryProj?.nomZone, ...otherProjNames].filter(Boolean).join(", ");
                 
                 return (
-                  <div key={bill.id} className="p-3 bg-amber-50/35 border border-amber-200 rounded-lg text-xs space-y-1 hover:bg-amber-50/60 transition bg-amber-50/20">
+                  <div key={bill.id} className="p-3 bg-amber-50/20 border border-amber-200 rounded-lg text-xs space-y-1 hover:bg-amber-50/40 transition">
                     <div className="flex justify-between items-start">
-                      <span className="font-extrabold text-slate-950 uppercase">{primaryProj?.nomAffaire || "Affaire"} ({allZones})</span>
-                      <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded-full font-bold ${bill.etatFacturation === BillingStatus.ENVOYEE ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-700"}`}>
+                      <span className="font-extrabold text-slate-950 uppercase leading-tight">{primaryProj?.nomAffaire || "Affaire"} ({allZones})</span>
+                      <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${bill.etatFacturation === BillingStatus.ENVOYEE ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-700"}`}>
                         {bill.etatFacturation === BillingStatus.ENVOYEE ? "Facture Envoyée" : "Brouillon"}
                       </span>
                     </div>
@@ -429,13 +518,11 @@ export default function DashboardView({ projects, budgets, realises, billings, s
                         <span className="font-bold text-slate-700">Client:</span> {client ? client.nom : "Inconnu"}
                       </div>
                       <div>
-                        <span className="font-bold text-slate-700">Facture reçue ?</span> <span className="font-semibold text-slate-800">{bill.factureRecue ? "Oui, validée ✅" : "Non reçue ❌"}</span>
+                        <span className="font-bold text-slate-700">Facture reçue ?</span> <span className="font-semibold text-slate-800">{bill.factureRecue ? "Oui ✅" : "Non ❌"}</span>
                       </div>
-                      <div>
-                        <span className="font-bold text-slate-700">Échéance:</span> {bill.dateEcheance ? new Date(bill.dateEcheance).toLocaleDateString("fr-FR") : "Non spécifié"}
-                      </div>
-                      <div className="text-right">
-                        <span className="font-extrabold text-slate-900 text-sm">{(bill.quantiteFacturee * bill.prixUnitaire).toLocaleString("fr-FR")} €</span>
+                      <div className="col-span-2 flex justify-between mt-1 pt-1 border-t border-slate-100/60 font-mono">
+                        <span className="text-[10px]">Échéance: <strong className="text-slate-600">{bill.dateEcheance ? new Date(bill.dateEcheance).toLocaleDateString("fr-FR") : "-"}</strong></span>
+                        <span className="font-extrabold text-slate-900 text-xs">{(bill.quantiteFacturee * bill.prixUnitaire).toLocaleString("fr-FR")} €</span>
                       </div>
                     </div>
                   </div>
@@ -559,6 +646,23 @@ export default function DashboardView({ projects, budgets, realises, billings, s
         </div>
 
       </div>
+
+      {isPrintModalOpen && (
+        <DashboardPrintModal
+          isOpen={isPrintModalOpen}
+          onClose={() => setIsPrintModalOpen(false)}
+          projects={projects}
+          budgets={budgets}
+          realises={realises}
+          billings={billings}
+          subcontractors={subcontractors}
+          clients={clients}
+          selectedClientId={selectedClient}
+          selectedSubId={selectedSub}
+          dateDebut={dateDebut}
+          dateFin={dateFin}
+        />
+      )}
 
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Project, Budget, Realise, Client } from "../types";
+import { Project, Budget, Realise, Client, Subcontractor } from "../types";
 import { X, Save, AlertTriangle, TrendingUp, DollarSign } from "lucide-react";
 
 interface BudgetRealiseModalProps {
@@ -9,11 +9,22 @@ interface BudgetRealiseModalProps {
   budget: Budget;
   realise: Realise;
   clients: Client[];
+  subcontractors: Subcontractor[];
   onSaveBudget: (id: string, data: Partial<Budget>) => Promise<void>;
   onSaveRealise: (id: string, data: Partial<Realise>) => Promise<void>;
 }
 
-export default function BudgetRealiseModal({ isOpen, onClose, project, budget, realise, clients, onSaveBudget, onSaveRealise }: BudgetRealiseModalProps) {
+export default function BudgetRealiseModal({
+  isOpen,
+  onClose,
+  project,
+  budget,
+  realise,
+  clients,
+  subcontractors,
+  onSaveBudget,
+  onSaveRealise
+}: BudgetRealiseModalProps) {
   const [bData, setBData] = useState<Partial<Budget>>({});
   const [rData, setRData] = useState<Partial<Realise>>({});
   const [loading, setLoading] = useState(false);
@@ -21,11 +32,23 @@ export default function BudgetRealiseModal({ isOpen, onClose, project, budget, r
 
   useEffect(() => {
     if (budget && realise) {
-      setBData({ ...budget });
-      setRData({ ...realise });
+      const clientObj = clients.find(c => c.id === project.clientId);
+      const subObj = subcontractors.find(s => s.id === project.sousTraitantId);
+      
+      const defaultClientFG = clientObj && clientObj.fraisGenerauxPct !== undefined ? clientObj.fraisGenerauxPct : 10;
+      const defaultSubFG = subObj && subObj.fraisGenerauxPct !== undefined ? subObj.fraisGenerauxPct : 10;
+
+      setBData({
+        ...budget,
+        fraisGenerauxPct: budget.fraisGenerauxPct !== undefined && budget.id ? budget.fraisGenerauxPct : defaultClientFG
+      });
+      setRData({
+        ...realise,
+        fraisGenerauxPct: realise.fraisGenerauxPct !== undefined && realise.id ? realise.fraisGenerauxPct : defaultSubFG
+      });
     }
     setError(null);
-  }, [budget, realise, isOpen]);
+  }, [budget, realise, isOpen, clients, subcontractors, project]);
 
   if (!isOpen) return null;
 
@@ -316,6 +339,58 @@ export default function BudgetRealiseModal({ isOpen, onClose, project, budget, r
                     onChange={handleRChange}
                     className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-teal-500 bg-white"
                   />
+                </div>
+              </div>
+
+              {/* Poids consommés et Taux de chute */}
+              <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-2.5">
+                <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider block">⚖️ Poids Consommés & Taux de Chute</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 block mb-1">Poids utilisé (kg)</label>
+                    <input
+                      type="number"
+                      name="poidsUtilise"
+                      value={rData.poidsUtilise || ""}
+                      onChange={handleRChange}
+                      className="w-full text-xs border border-slate-200 rounded-md px-2 py-1 bg-slate-50 focus:bg-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 block mb-1">Poids sous-traité (kg)</label>
+                    <input
+                      type="number"
+                      name="poidsSousTraite"
+                      value={rData.poidsSousTraite || ""}
+                      onChange={handleRChange}
+                      className="w-full text-xs border border-slate-200 rounded-md px-2 py-1 bg-slate-50 focus:bg-white font-mono"
+                    />
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-slate-100 space-y-1 text-xs">
+                  <div className="flex justify-between items-center text-slate-700">
+                    <span className="font-semibold text-slate-500">Total consommé :</span>
+                    <span className="font-bold font-mono text-slate-900">
+                      {((rData.poidsUtilise || 0) + (rData.poidsSousTraite || 0)).toLocaleString()} kg
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-700">
+                    <span className="font-semibold text-slate-500">Poids à fabriquer :</span>
+                    <span className="font-medium font-mono text-slate-600">
+                      {(project.poidsTotal || 0).toLocaleString()} kg
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center bg-rose-50/50 p-1.5 rounded text-rose-950 font-bold mt-1">
+                    <span>Taux de chute (chute) :</span>
+                    <span className="font-mono">
+                      {(() => {
+                        const totalCons = (rData.poidsUtilise || 0) + (rData.poidsSousTraite || 0);
+                        const targetWeight = project.poidsTotal || 1;
+                        const scrapRate = targetWeight > 0 ? ((totalCons - targetWeight) / targetWeight) * 100 : 0;
+                        return `${scrapRate > 0 ? "+" : ""}${scrapRate.toFixed(2)} %`;
+                      })()}
+                    </span>
+                  </div>
                 </div>
               </div>
 

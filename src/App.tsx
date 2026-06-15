@@ -86,6 +86,37 @@ export default function App() {
   const [filterDateFin, setFilterDateFin] = useState("");
   const [filterDateType, setFilterDateType] = useState<"facturation" | "echeance">("facturation");
 
+  // Sort States
+  const [projectsSort, setProjectsSort] = useState<{ field: string; order: "asc" | "desc" } | null>(null);
+  const [bloc1Sort, setBloc1Sort] = useState<{ field: string; order: "asc" | "desc" } | null>(null);
+  const [bloc2Sort, setBloc2Sort] = useState<{ field: string; order: "asc" | "desc" } | null>(null);
+  const [billingsSort, setBillingsSort] = useState<{ field: string; order: "asc" | "desc" } | null>(null);
+
+  const getSortIcon = (field: string, currentSort: { field: string; order: "asc" | "desc" } | null) => {
+    if (!currentSort || currentSort.field !== field) {
+      return <span className="text-slate-350 ml-1.5 select-none text-[10px] inline-block font-sans font-normal">⇅</span>;
+    }
+    return currentSort.order === "asc" ? (
+      <span className="text-teal-600 font-bold ml-1 text-[11px] inline-block">▲</span>
+    ) : (
+      <span className="text-teal-600 font-bold ml-1 text-[11px] inline-block">▼</span>
+    );
+  };
+
+  const handleSortToggle = (
+    field: string,
+    currentSort: { field: string; order: "asc" | "desc" } | null,
+    setSort: React.Dispatch<React.SetStateAction<{ field: string; order: "asc" | "desc" } | null>>
+  ) => {
+    if (!currentSort || currentSort.field !== field) {
+      setSort({ field, order: "asc" });
+    } else if (currentSort.order === "asc") {
+      setSort({ field, order: "desc" });
+    } else {
+      setSort(null);
+    }
+  };
+
   // Modal control states
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [selectedProjectForEdit, setSelectedProjectForEdit] = useState<Project | undefined>(undefined);
@@ -445,6 +476,180 @@ export default function App() {
     return matchesKeyword && matchesClient && matchesSub && matchesTypeOuvrage && matchesBillingStatus && matchesDateDebut && matchesDateFin;
   });
 
+  // Sorting evaluators
+  const getSortedProjects = () => {
+    if (!projectsSort) return filteredProjects;
+    const { field, order } = projectsSort;
+    return [...filteredProjects].sort((a, b) => {
+      let valA: any = a[field as keyof Project] ?? "";
+      let valB: any = b[field as keyof Project] ?? "";
+
+      if (field === "clientId") {
+        valA = clients.find(c => c.id === a.clientId)?.nom || "";
+        valB = clients.find(c => c.id === b.clientId)?.nom || "";
+      } else if (field === "sousTraitantId") {
+        valA = subcontractors.find(s => s.id === a.sousTraitantId)?.nom || "";
+        valB = subcontractors.find(s => s.id === b.sousTraitantId)?.nom || "";
+      }
+
+      if (typeof valA === "number" && typeof valB === "number") {
+        return order === "asc" ? valA - valB : valB - valA;
+      }
+      return order === "asc"
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+  };
+
+  const getSortedBloc1 = () => {
+    const listWithBudget = filteredProjects.map(p => {
+      const bud = budgets.find(b => b.projetId === p.id) || {
+        id: "",
+        projetId: p.id,
+        poidsVendu: p.poidsTotal,
+        budgetFourniture: 0,
+        budgetMainOeuvre: 0,
+        budgetSousTraitance: 0,
+        fraisGenerauxPct: 10
+      };
+      const subTotal = (bud.budgetFourniture || 0) + (bud.budgetMainOeuvre || 0) + (bud.budgetSousTraitance || 0);
+      const multi = 1 + (bud.fraisGenerauxPct || 0) / 100;
+      const finalVolume = subTotal * multi;
+      return { project: p, budget: bud, finalVolume };
+    });
+
+    if (!bloc1Sort) return listWithBudget;
+    const { field, order } = bloc1Sort;
+
+    return [...listWithBudget].sort((a, b) => {
+      let valA: any = "";
+      let valB: any = "";
+
+      if (field === "nomAffaire") {
+        valA = a.project.nomAffaire + " " + a.project.nomZone;
+        valB = b.project.nomAffaire + " " + b.project.nomZone;
+      } else if (field === "poidsVendu") {
+        valA = a.budget.poidsVendu;
+        valB = b.budget.poidsVendu;
+      } else if (field === "budgetFourniture") {
+        valA = a.budget.budgetFourniture || 0;
+        valB = b.budget.budgetFourniture || 0;
+      } else if (field === "budgetMainOeuvre") {
+        valA = a.budget.budgetMainOeuvre || 0;
+        valB = b.budget.budgetMainOeuvre || 0;
+      } else if (field === "budgetSousTraitance") {
+        valA = a.budget.budgetSousTraitance || 0;
+        valB = b.budget.budgetSousTraitance || 0;
+      } else if (field === "fraisGenerauxPct") {
+        valA = a.budget.fraisGenerauxPct || 0;
+        valB = b.budget.fraisGenerauxPct || 0;
+      } else if (field === "finalVolume") {
+        valA = a.finalVolume;
+        valB = b.finalVolume;
+      }
+
+      if (typeof valA === "number" && typeof valB === "number") {
+        return order === "asc" ? valA - valB : valB - valA;
+      }
+      return order === "asc"
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+  };
+
+  const getSortedBloc2 = () => {
+    const listWithRealise = filteredProjects.map(p => {
+      const real = realises.find(r => r.projetId === p.id) || {
+        id: "",
+        projetId: p.id,
+        poidsFabrique: 0,
+        achatsFournitureRealise: 0,
+        achatsMainOeuvreRealise: 0,
+        achatsSousTraitanceRealise: 0,
+        fraisGenerauxPct: 10
+      };
+      const subTotal = (real.achatsFournitureRealise || 0) + (real.achatsMainOeuvreRealise || 0) + (real.achatsSousTraitanceRealise || 0);
+      const multi = 1 + (real.fraisGenerauxPct || 0) / 100;
+      const finalVolume = subTotal * multi;
+      return { project: p, realise: real, finalVolume };
+    });
+
+    if (!bloc2Sort) return listWithRealise;
+    const { field, order } = bloc2Sort;
+
+    return [...listWithRealise].sort((a, b) => {
+      let valA: any = "";
+      let valB: any = "";
+
+      if (field === "nomAffaire") {
+        valA = a.project.nomAffaire + " " + a.project.nomZone;
+        valB = b.project.nomAffaire + " " + b.project.nomZone;
+      } else if (field === "poidsFabrique") {
+        valA = a.realise.poidsFabrique;
+        valB = b.realise.poidsFabrique;
+      } else if (field === "achatsFournitureRealise") {
+        valA = a.realise.achatsFournitureRealise || 0;
+        valB = b.realise.achatsFournitureRealise || 0;
+      } else if (field === "achatsMainOeuvreRealise") {
+        valA = a.realise.achatsMainOeuvreRealise || 0;
+        valB = b.realise.achatsMainOeuvreRealise || 0;
+      } else if (field === "achatsSousTraitanceRealise") {
+        valA = a.realise.achatsSousTraitanceRealise || 0;
+        valB = b.realise.achatsSousTraitanceRealise || 0;
+      } else if (field === "fraisGenerauxPct") {
+        valA = a.realise.fraisGenerauxPct || 0;
+        valB = b.realise.fraisGenerauxPct || 0;
+      } else if (field === "finalVolume") {
+        valA = a.finalVolume;
+        valB = b.finalVolume;
+      }
+
+      if (typeof valA === "number" && typeof valB === "number") {
+        return order === "asc" ? valA - valB : valB - valA;
+      }
+      return order === "asc"
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+  };
+
+  const getSortedBillings = () => {
+    if (!billingsSort) return filteredBillings;
+    const { field, order } = billingsSort;
+
+    return [...filteredBillings].sort((a, b) => {
+      let valA: any = a[field as keyof Billing] ?? "";
+      let valB: any = b[field as keyof Billing] ?? "";
+
+      if (field === "nomAffaire") {
+        const primA = projects.find(p => p.id === a.projetId);
+        const primB = projects.find(p => p.id === b.projetId);
+        valA = primA ? primA.nomAffaire + " " + primA.nomZone : "";
+        valB = primB ? primB.nomAffaire + " " + primB.nomZone : "";
+      } else if (field === "clientId") {
+        const primA = projects.find(p => p.id === a.projetId);
+        const primB = projects.find(p => p.id === b.projetId);
+        valA = primA ? (clients.find(c => c.id === primA.clientId)?.nom || "") : "";
+        valB = primB ? (clients.find(c => c.id === primB.clientId)?.nom || "") : "";
+      } else if (field === "sousTraitantId") {
+        const primA = projects.find(p => p.id === a.projetId);
+        const primB = projects.find(p => p.id === b.projetId);
+        valA = primA ? (subcontractors.find(s => s.id === primA.sousTraitantId)?.nom || "") : "";
+        valB = primB ? (subcontractors.find(s => s.id === primB.sousTraitantId)?.nom || "") : "";
+      } else if (field === "amountHT") {
+        valA = (a.quantiteFacturee || 0) * (a.prixUnitaire || 0);
+        valB = (b.quantiteFacturee || 0) * (b.prixUnitaire || 0);
+      }
+
+      if (typeof valA === "number" && typeof valB === "number") {
+        return order === "asc" ? valA - valB : valB - valA;
+      }
+      return order === "asc"
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+  };
+
   // Render authenticating screen
   if (authLoading) {
     return (
@@ -466,7 +671,7 @@ export default function App() {
             <div className="flex items-center gap-3">
               {/* BRAND IMAGE LOGO */}
               <img 
-                src={flowfabLogo} 
+                src={flowfabLogo}
                 alt="FlowFab Premium Logo" 
                 className="w-10 h-10 object-contain rounded-lg shadow-md border border-slate-700/50 bg-white"
                 referrerPolicy="no-referrer"
@@ -650,7 +855,7 @@ export default function App() {
       <header className="bg-slate-900 text-white px-4 md:px-8 py-3 flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 shadow-sm print:hidden">
         <div className="flex items-center gap-2">
           <img 
-            src={flowfabLogo} 
+            src={flowfabLogo}
             alt="FlowFab Logo" 
             className="w-8 h-8 rounded-md bg-white p-0.5 object-contain"
             referrerPolicy="no-referrer"
@@ -980,23 +1185,63 @@ export default function App() {
                     Aucun projet de fabrication ne correspond aux filtres définis.
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto font-sans">
                     <table className="w-full text-left text-sm whitespace-nowrap">
                       <thead>
-                        <tr className="border-b border-slate-200 bg-slate-50/50 text-gray-500 font-medium">
+                        <tr className="border-b border-slate-200 bg-slate-50/50 text-gray-500 font-semibold text-[11px] uppercase tracking-wider">
                           <th className="px-4 py-3 text-left">Actions / Impression</th>
-                          <th className="px-4 py-3 text-center w-12">État</th>
-                          <th className="px-4 py-3">Affaire / Zone</th>
-                          <th className="px-4 py-3">Cde N°</th>
-                          <th className="px-4 py-3">Client</th>
-                          <th className="px-4 py-3">Sous-Traitant</th>
-                          <th className="px-4 py-3 text-right">Poids Global (kg)</th>
-                          <th className="px-4 py-3">Traitement Protection</th>
-                          <th className="px-4 py-3">Jalon Chantier</th>
+                          <th 
+                            onClick={() => handleSortToggle("status", projectsSort, setProjectsSort)}
+                            className="px-4 py-3 text-center w-12 cursor-pointer hover:bg-slate-100 select-none"
+                          >
+                            État {getSortIcon("status", projectsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("nomAffaire", projectsSort, setProjectsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100 select-none"
+                          >
+                            Affaire / Zone {getSortIcon("nomAffaire", projectsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("numCommande", projectsSort, setProjectsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100 select-none"
+                          >
+                            Cde N° {getSortIcon("numCommande", projectsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("clientId", projectsSort, setProjectsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100 select-none"
+                          >
+                            Client {getSortIcon("clientId", projectsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("sousTraitantId", projectsSort, setProjectsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100 select-none"
+                          >
+                            Sous-Traitant {getSortIcon("sousTraitantId", projectsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("poidsTotal", projectsSort, setProjectsSort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100 select-none"
+                          >
+                            Poids Global (kg) {getSortIcon("poidsTotal", projectsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("traitementProtection", projectsSort, setProjectsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100 select-none"
+                          >
+                            Traitement Protection {getSortIcon("traitementProtection", projectsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("delaiLivraisonChantier", projectsSort, setProjectsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100 select-none"
+                          >
+                            Jalon Chantier {getSortIcon("delaiLivraisonChantier", projectsSort)}
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-800">
-                        {filteredProjects.map(p => {
+                        {getSortedProjects().map(p => {
                           const cl = clients.find(c => c.id === p.clientId);
                           const sub = subcontractors.find(s => s.id === p.sousTraitantId);
                           return (
@@ -1149,44 +1394,62 @@ export default function App() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm whitespace-nowrap">
                       <thead>
-                        <tr className="border-b border-slate-200 bg-slate-50/50 text-gray-500 font-medium">
-                          <th className="px-4 py-3">Affaire-Zone</th>
-                          <th className="px-4 py-3 text-right">Poids Vendu (kg)</th>
-                          <th className="px-4 py-3 text-right">Fourniture (€)</th>
-                          <th className="px-4 py-3 text-right">Main d'Œuvre (€)</th>
-                          <th className="px-4 py-3 text-right">Sous-Traitance (€)</th>
-                          <th className="px-4 py-3 text-right">Frais Généraux (FG)</th>
-                          <th className="px-4 py-3 text-right font-semibold">Volume Global (+ FG)</th>
+                        <tr className="border-b border-slate-200 bg-slate-50/50 text-gray-500 font-bold uppercase tracking-tight text-[11px] select-none">
+                          <th 
+                            onClick={() => handleSortToggle("nomAffaire", bloc1Sort, setBloc1Sort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                          >
+                            Affaire-Zone {getSortIcon("nomAffaire", bloc1Sort)}
+                          </th>
                           <th className="px-4 py-3 text-center">Fiches / Actions</th>
+                          <th 
+                            onClick={() => handleSortToggle("poidsVendu", bloc1Sort, setBloc1Sort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                          >
+                            Poids Vendu (kg) {getSortIcon("poidsVendu", bloc1Sort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("budgetFourniture", bloc1Sort, setBloc1Sort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                          >
+                            Fourniture (€) {getSortIcon("budgetFourniture", bloc1Sort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("budgetMainOeuvre", bloc1Sort, setBloc1Sort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                          >
+                            Main d'Œuvre (€) {getSortIcon("budgetMainOeuvre", bloc1Sort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("budgetSousTraitance", bloc1Sort, setBloc1Sort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                          >
+                            Sous-Traitance (€) {getSortIcon("budgetSousTraitance", bloc1Sort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("fraisGenerauxPct", bloc1Sort, setBloc1Sort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                          >
+                            Frais Généraux (FG) {getSortIcon("fraisGenerauxPct", bloc1Sort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("finalVolume", bloc1Sort, setBloc1Sort)}
+                            className="px-4 py-3 text-right font-semibold cursor-pointer hover:bg-slate-100"
+                          >
+                            Volume Global (+ FG) {getSortIcon("finalVolume", bloc1Sort)}
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-800">
-                        {filteredProjects.map(p => {
-                          const bud = budgets.find(b => b.projetId === p.id) || {
-                            id: "",
-                            projetId: p.id,
-                            poidsVendu: p.poidsTotal,
-                            budgetFourniture: 0,
-                            budgetMainOeuvre: 0,
-                            budgetSousTraitance: 0,
-                            fraisGenerauxPct: 10
-                          };
-                          const subTotal = (bud.budgetFourniture || 0) + (bud.budgetMainOeuvre || 0) + (bud.budgetSousTraitance || 0);
-                          const multi = 1 + (bud.fraisGenerauxPct || 0) / 100;
-                          const finalVolume = subTotal * multi;
+                        {getSortedBloc1().map(item => {
+                          const { project: p, budget: bud, finalVolume } = item;
 
                           return (
                             <tr key={p.id} className="hover:bg-slate-50/65 transition">
-                              <td className="px-4 py-3">
+                              <td className="px-4 py-3 col-span-1">
                                 <span className="font-semibold text-slate-950 block">{p.nomAffaire}</span>
                                 <span className="text-[10px] text-gray-400 font-mono block">{p.nomZone}</span>
                               </td>
-                              <td className="px-4 py-3 text-right font-medium">{bud.poidsVendu.toLocaleString()} kg</td>
-                              <td className="px-4 py-3 text-right">{(bud.budgetFourniture || 0).toLocaleString()} €</td>
-                              <td className="px-4 py-3 text-right">{(bud.budgetMainOeuvre || 0).toLocaleString()} €</td>
-                              <td className="px-4 py-3 text-right">{(bud.budgetSousTraitance || 0).toLocaleString()} €</td>
-                              <td className="px-4 py-3 text-right text-xs text-gray-500">{bud.fraisGenerauxPct} %</td>
-                              <td className="px-4 py-3 text-right font-bold text-teal-800 font-mono">{finalVolume.toLocaleString()} €</td>
                               <td className="px-4 py-3">
                                 <div className="flex items-center justify-center gap-2">
                                   <button
@@ -1218,7 +1481,7 @@ export default function App() {
                                         setRealises(prev => prev.some(r => r.id === real.id) ? prev : [...prev, real]);
                                         setIsFinanceModalOpen(true);
                                       }}
-                                      className="text-xs bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-750 font-semibold px-2 py-1 rounded transition whitespace-nowrap cursor-pointer"
+                                      className="text-xs bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-755 font-semibold px-2 py-1 rounded transition whitespace-nowrap cursor-pointer"
                                     >
                                       Ajuster
                                     </button>
@@ -1227,6 +1490,12 @@ export default function App() {
                                   )}
                                 </div>
                               </td>
+                              <td className="px-4 py-3 text-right font-medium">{bud.poidsVendu.toLocaleString()} kg</td>
+                              <td className="px-4 py-3 text-right">{(bud.budgetFourniture || 0).toLocaleString()} €</td>
+                              <td className="px-4 py-3 text-right">{(bud.budgetMainOeuvre || 0).toLocaleString()} €</td>
+                              <td className="px-4 py-3 text-right">{(bud.budgetSousTraitance || 0).toLocaleString()} €</td>
+                              <td className="px-4 py-3 text-right text-xs text-gray-500">{bud.fraisGenerauxPct} %</td>
+                              <td className="px-4 py-3 text-right font-bold text-teal-800 font-mono">{finalVolume.toLocaleString()} €</td>
                             </tr>
                           );
                         })}
@@ -1248,32 +1517,55 @@ export default function App() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm whitespace-nowrap">
                       <thead>
-                        <tr className="border-b border-slate-200 bg-slate-50/50 text-gray-500 font-medium">
-                          <th className="px-4 py-3">Affaire-Zone</th>
-                          <th className="px-4 py-3 text-right">Poids Fabriqué (kg)</th>
-                          <th className="px-4 py-3 text-right">Achats Matières Réel (€)</th>
-                          <th className="px-4 py-3 text-right">Achats M.O. Réel (€)</th>
-                          <th className="px-4 py-3 text-right">Achats S.T. Réel (€)</th>
-                          <th className="px-4 py-3 text-right">FG (%)</th>
-                          <th className="px-4 py-3 text-right font-semibold">Total Dépenses Réelles</th>
+                        <tr className="border-b border-slate-200 bg-slate-50/50 text-gray-500 font-bold uppercase tracking-tight text-[11px] select-none">
+                          <th 
+                            onClick={() => handleSortToggle("nomAffaire", bloc2Sort, setBloc2Sort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                          >
+                            Affaire-Zone {getSortIcon("nomAffaire", bloc2Sort)}
+                          </th>
                           <th className="px-4 py-3 text-center">Fiches / Actions</th>
+                          <th 
+                            onClick={() => handleSortToggle("poidsFabrique", bloc2Sort, setBloc2Sort)}
+                            className="px-4 py-3 text-right font-semibold text-amber-900 cursor-pointer hover:bg-slate-100"
+                          >
+                            Poids Fabriqué (kg) {getSortIcon("poidsFabrique", bloc2Sort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("achatsFournitureRealise", bloc2Sort, setBloc2Sort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                          >
+                            Achats Matières Réel (€) {getSortIcon("achatsFournitureRealise", bloc2Sort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("achatsMainOeuvreRealise", bloc2Sort, setBloc2Sort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                          >
+                            Achats M.O. Réel (€) {getSortIcon("achatsMainOeuvreRealise", bloc2Sort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("achatsSousTraitanceRealise", bloc2Sort, setBloc2Sort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                          >
+                            Achats S.T. Réel (€) {getSortIcon("achatsSousTraitanceRealise", bloc2Sort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("fraisGenerauxPct", bloc2Sort, setBloc2Sort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                          >
+                            FG (%) {getSortIcon("fraisGenerauxPct", bloc2Sort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("finalVolume", bloc2Sort, setBloc2Sort)}
+                            className="px-4 py-3 text-right font-semibold cursor-pointer hover:bg-slate-100"
+                          >
+                            Total Dépenses Réelles {getSortIcon("finalVolume", bloc2Sort)}
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-800">
-                        {filteredProjects.map(p => {
-                          const real = realises.find(r => r.projetId === p.id) || {
-                            id: "",
-                            projetId: p.id,
-                            poidsFabrique: 0,
-                            achatsFournitureRealise: 0,
-                            achatsMainOeuvreRealise: 0,
-                            achatsSousTraitanceRealise: 0,
-                            fraisGenerauxPct: 10
-                          };
-                          
-                          const subTotal = (real.achatsFournitureRealise || 0) + (real.achatsMainOeuvreRealise || 0) + (real.achatsSousTraitanceRealise || 0);
-                          const multi = 1 + (real.fraisGenerauxPct || 0) / 100;
-                          const finalVolume = subTotal * multi;
+                        {getSortedBloc2().map(item => {
+                          const { project: p, realise: real, finalVolume } = item;
 
                           return (
                             <tr key={p.id} className="hover:bg-slate-50/65 transition">
@@ -1281,12 +1573,6 @@ export default function App() {
                                 <span className="font-semibold text-slate-950 block">{p.nomAffaire}</span>
                                 <span className="text-[10px] text-gray-400 font-mono block">{p.nomZone}</span>
                               </td>
-                              <td className="px-4 py-3 text-right font-medium">{real.poidsFabrique.toLocaleString()} kg</td>
-                              <td className="px-4 py-3 text-right">{(real.achatsFournitureRealise || 0).toLocaleString()} €</td>
-                              <td className="px-4 py-3 text-right font-mono">{(real.achatsMainOeuvreRealise || 0).toLocaleString()} €</td>
-                              <td className="px-4 py-3 text-right">{(real.achatsSousTraitanceRealise || 0).toLocaleString()} €</td>
-                              <td className="px-4 py-3 text-right text-xs text-gray-500">{real.fraisGenerauxPct} %</td>
-                              <td className="px-4 py-3 text-right font-bold text-red-800 font-mono">{finalVolume.toLocaleString()} €</td>
                               <td className="px-4 py-3">
                                 <div className="flex items-center justify-center gap-2">
                                   <button
@@ -1318,7 +1604,7 @@ export default function App() {
                                         setRealises(prev => prev.some(r => r.id === real.id) ? prev : [...prev, real]);
                                         setIsFinanceModalOpen(true);
                                       }}
-                                      className="text-xs bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-750 font-semibold px-2 py-1 rounded transition whitespace-nowrap cursor-pointer"
+                                      className="text-xs bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-755 font-semibold px-2 py-1 rounded transition whitespace-nowrap cursor-pointer"
                                     >
                                       Ajuster
                                     </button>
@@ -1327,6 +1613,12 @@ export default function App() {
                                   )}
                                 </div>
                               </td>
+                              <td className="px-4 py-3 text-right font-medium">{real.poidsFabrique.toLocaleString()} kg</td>
+                              <td className="px-4 py-3 text-right">{(real.achatsFournitureRealise || 0).toLocaleString()} €</td>
+                              <td className="px-4 py-3 text-right font-mono">{(real.achatsMainOeuvreRealise || 0).toLocaleString()} €</td>
+                              <td className="px-4 py-3 text-right">{(real.achatsSousTraitanceRealise || 0).toLocaleString()} €</td>
+                              <td className="px-4 py-3 text-right text-xs text-gray-500">{real.fraisGenerauxPct} %</td>
+                              <td className="px-4 py-3 text-right font-bold text-red-800 font-mono">{finalVolume.toLocaleString()} €</td>
                             </tr>
                           );
                         })}
@@ -1365,22 +1657,72 @@ export default function App() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm whitespace-nowrap">
                       <thead>
-                        <tr className="border-b border-slate-200 bg-slate-50/50 text-gray-500 font-medium">
+                        <tr className="border-b border-slate-200 bg-slate-50/50 text-gray-500 font-bold uppercase tracking-tight text-[11px] select-none">
                           <th className="px-4 py-3 text-left">Actions</th>
-                          <th className="px-4 py-3">État</th>
-                          <th className="px-4 py-3">Affaire-Zone</th>
-                          <th className="px-4 py-3">Type Prestation</th>
-                          <th className="px-4 py-3">Client</th>
-                          <th className="px-4 py-3">Sous-Traitant</th>
-                          <th className="px-4 py-3 text-right">Quantité</th>
-                          <th className="px-4 py-3 text-right">Prix Unitaire</th>
-                          <th className="px-4 py-3 text-right">Montant H.T.</th>
-                          <th className="px-4 py-3">Date facture</th>
-                          <th className="px-4 py-3">Échéance</th>
+                          <th 
+                            onClick={() => handleSortToggle("etatFacturation", billingsSort, setBillingsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                          >
+                            État {getSortIcon("etatFacturation", billingsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("nomAffaire", billingsSort, setBillingsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                          >
+                            Affaire-Zone {getSortIcon("nomAffaire", billingsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("typePrestation", billingsSort, setBillingsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                          >
+                            Type Prestation {getSortIcon("typePrestation", billingsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("clientId", billingsSort, setBillingsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                          >
+                            Client {getSortIcon("clientId", billingsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("sousTraitantId", billingsSort, setBillingsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                          >
+                            Sous-Traitant {getSortIcon("sousTraitantId", billingsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("quantiteFacturee", billingsSort, setBillingsSort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                          >
+                            Quantité {getSortIcon("quantiteFacturee", billingsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("prixUnitaire", billingsSort, setBillingsSort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                          >
+                            Prix Unitaire {getSortIcon("prixUnitaire", billingsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("amountHT", billingsSort, setBillingsSort)}
+                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100 font-semibold"
+                          >
+                            Montant H.T. {getSortIcon("amountHT", billingsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("dateFacturation", billingsSort, setBillingsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                          >
+                            Date facture {getSortIcon("dateFacturation", billingsSort)}
+                          </th>
+                          <th 
+                            onClick={() => handleSortToggle("dateEcheance", billingsSort, setBillingsSort)}
+                            className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                          >
+                            Échéance {getSortIcon("dateEcheance", billingsSort)}
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-800">
-                        {filteredBillings.map(b => {
+                        {getSortedBillings().map(b => {
                           const proj = projects.find(p => p.id === b.projetId);
                           const cl = proj ? clients.find(c => c.id === proj.clientId) : null;
                           const sub = proj ? subcontractors.find(s => s.id === proj.sousTraitantId) : null;
@@ -1638,6 +1980,7 @@ export default function App() {
           budget={budgets.find(b => b.projetId === financeProject.id) || { id: "", projetId: financeProject.id, poidsVendu: financeProject.poidsTotal, budgetFourniture: 0, budgetMainOeuvre: 0, budgetSousTraitance: 0, fraisGenerauxPct: 10 }}
           realise={realises.find(r => r.projetId === financeProject.id) || { id: "", projetId: financeProject.id, poidsFabrique: 0, achatsFournitureRealise: 0, achatsMainOeuvreRealise: 0, achatsSousTraitanceRealise: 0, fraisGenerauxPct: 10 }}
           clients={clients}
+          subcontractors={subcontractors}
           onSaveBudget={async (id, data) => {
             await api.updateBudget(id, data);
             await loadWorkspaceData();
