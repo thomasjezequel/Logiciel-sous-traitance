@@ -445,6 +445,16 @@ export default function App() {
     return true;
   });
 
+  // Liste des clients réellement visibles par l'utilisateur (Annuaire + menus déroulants de filtre)
+  const permittedClients = clients.filter(c => {
+    if (!user || user.role === UserRole.ADMIN) return true;
+    const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+    if (hasClientLimit) {
+      return user.allowedClientIds!.includes(c.id);
+    }
+    return true;
+  });
+
   // Filtering calculations applied to Projets, Budgets, and Réalisés
   const filteredProjects = permittedProjects.filter(p => {
     const matchesKeyword = p.nomAffaire.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1065,7 +1075,7 @@ export default function App() {
                   className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:outline-teal-500 text-slate-800 bg-white"
                 >
                   <option value="">-- Tous les Clients --</option>
-                  {clients.map(c => (
+                  {permittedClients.map(c => (
                     <option key={c.id} value={c.id}>{c.nom}</option>
                   ))}
                 </select>
@@ -1252,7 +1262,7 @@ export default function App() {
                 realises={realises.filter(r => permittedProjects.some(p => p.id === r.projetId))}
                 billings={permittedBillings}
                 subcontractors={subcontractors}
-                clients={clients}
+                clients={permittedClients}
               />
             )}
 
@@ -1956,10 +1966,10 @@ export default function App() {
                   </div>
 
                   <div className="divide-y divide-slate-150 max-h-[50vh] overflow-y-auto">
-                    {clients.length === 0 ? (
+                    {permittedClients.length === 0 ? (
                       <div className="p-8 text-center text-xs text-gray-400">Aucun client répertorié.</div>
                     ) : (
-                      clients.map(c => (
+                      permittedClients.map(c => (
                         <div key={c.id} className="p-4 flex justify-between items-start hover:bg-slate-50/50 transition">
                           <div>
                             <h4 className="font-bold text-slate-950 text-sm">{c.nom}</h4>

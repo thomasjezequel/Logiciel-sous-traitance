@@ -502,7 +502,11 @@ app.post("/api/auth/login", (req, res) => {
       email: user.email,
       nom: user.nom,
       role: user.role,
-      status: user.status
+      status: user.status,
+      poste: user.poste,
+      allowedClientIds: user.allowedClientIds || [],
+      allowedProjectIds: user.allowedProjectIds || [],
+      createdAt: user.createdAt
     }
   });
 });
@@ -514,7 +518,11 @@ app.get("/api/auth/me", authenticate, (req, res) => {
       email: user.email,
       nom: user.nom,
       role: user.role,
-      status: user.status
+      status: user.status,
+      poste: user.poste,
+      allowedClientIds: user.allowedClientIds || [],
+      allowedProjectIds: user.allowedProjectIds || [],
+      createdAt: user.createdAt
     }
   });
 });
