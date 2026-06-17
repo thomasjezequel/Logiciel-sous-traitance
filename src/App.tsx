@@ -13,6 +13,7 @@ import {
   BillingStatus
 } from "./types";
 import { api } from "./lib/api";
+import * as XLSX from "xlsx";
 import { 
   Briefcase, 
   Users, 
@@ -47,6 +48,18 @@ import DashboardView from "./components/DashboardView";
 import ProfileView from "./components/ProfileView";
 import BillingPrintModal from "./components/BillingPrintModal";
 import BudgetRealisePrintModal from "./components/BudgetRealisePrintModal";
+
+// Helper générique d'export Excel (SheetJS)
+const exportToExcel = (data: Record<string, any>[], fileName: string, sheetName: string = "Feuille1") => {
+  if (!data || data.length === 0) {
+    alert("Aucune donnée à exporter pour les filtres actuellement appliqués.");
+    return;
+  }
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  XLSX.writeFile(workbook, `${fileName}.xlsx`);
+};
 
 export default function App() {
   // Auth state
@@ -650,6 +663,90 @@ export default function App() {
     });
   };
 
+  // ─── Exports Excel ───
+
+  const handleExportProjects = () => {
+    const data = getSortedProjects().map(p => {
+      const cl = clients.find(c => c.id === p.clientId);
+      const sub = subcontractors.find(s => s.id === p.sousTraitantId);
+      return {
+        "État": p.status === ProjectStatus.TERMINEE ? "Terminée" : "En cours",
+        "Affaire": p.nomAffaire,
+        "Zone": p.nomZone,
+        "N° Commande": p.numCommande || "",
+        "Client": cl?.nom || "",
+        "Sous-traitant": sub?.nom || "",
+        "Poids Global (kg)": p.poidsTotal,
+        "Traitement / Protection": p.protection || "",
+        "Délai Livraison Chantier": p.delaiLivraisonChantier ? new Date(p.delaiLivraisonChantier).toLocaleDateString("fr-FR") : ""
+      };
+    });
+    exportToExcel(data, `FlowFab_Projets_${new Date().toISOString().slice(0, 10)}`, "Projets");
+  };
+
+  const handleExportBudgetsRealises = () => {
+    const bloc1 = getSortedBloc1();
+    const bloc2 = getSortedBloc2();
+
+    const data = bloc1.map(item => {
+      const { project: p, budget: bud, finalVolume: finalVolumeBudget } = item;
+      const realiseEntry = bloc2.find(r => r.project.id === p.id);
+      const real = realiseEntry ? realiseEntry.realise : {
+        poidsFabrique: 0,
+        achatsFournitureRealise: 0,
+        achatsMainOeuvreRealise: 0,
+        achatsSousTraitanceRealise: 0,
+        fraisGenerauxPct: 10
+      };
+      const finalVolumeRealise = realiseEntry ? realiseEntry.finalVolume : 0;
+
+      return {
+        "Affaire": p.nomAffaire,
+        "Zone": p.nomZone,
+        "Poids Vendu (kg)": bud.poidsVendu,
+        "Budget Fourniture (€)": bud.budgetFourniture || 0,
+        "Budget Main d'Œuvre (€)": bud.budgetMainOeuvre || 0,
+        "Budget Sous-Traitance (€)": bud.budgetSousTraitance || 0,
+        "FG Budget (%)": bud.fraisGenerauxPct,
+        "Volume Budget + FG (€)": finalVolumeBudget,
+        "Poids Fabriqué (kg)": real.poidsFabrique,
+        "Achats Fourniture Réel (€)": real.achatsFournitureRealise || 0,
+        "Achats Main d'Œuvre Réel (€)": real.achatsMainOeuvreRealise || 0,
+        "Achats Sous-Traitance Réel (€)": real.achatsSousTraitanceRealise || 0,
+        "FG Réel (%)": real.fraisGenerauxPct,
+        "Total Réel + FG (€)": finalVolumeRealise
+      };
+    });
+
+    exportToExcel(data, `FlowFab_Budgets_Realises_${new Date().toISOString().slice(0, 10)}`, "Budgets-Realises");
+  };
+
+  const handleExportBillings = () => {
+    const data = getSortedBillings().map(b => {
+      const proj = projects.find(p => p.id === b.projetId);
+      const cl = proj ? clients.find(c => c.id === proj.clientId) : null;
+      const sub = proj ? subcontractors.find(s => s.id === proj.sousTraitantId) : null;
+      const totalHT = (b.quantiteFacturee || 0) * (b.prixUnitaire || 0);
+
+      return {
+        "État": b.etatFacturation,
+        "Affaire": proj?.nomAffaire || "",
+        "Zone": proj?.nomZone || "",
+        "Type de Prestation": b.typePrestation,
+        "Client": cl?.nom || "",
+        "Sous-traitant": sub?.nom || "",
+        "Quantité": b.quantiteFacturee,
+        "Unité": b.uniteFacturee,
+        "Prix Unitaire (€)": b.prixUnitaire,
+        "Montant H.T. (€)": totalHT,
+        "Date Facture": b.dateFacturation ? new Date(b.dateFacturation).toLocaleDateString("fr-FR") : "",
+        "Échéance": b.dateEcheance ? new Date(b.dateEcheance).toLocaleDateString("fr-FR") : ""
+      };
+    });
+
+    exportToExcel(data, `FlowFab_Facturation_${new Date().toISOString().slice(0, 10)}`, "Facturation");
+  };
+
   // Render authenticating screen
   if (authLoading) {
     return (
@@ -671,10 +768,9 @@ export default function App() {
             <div className="flex items-center gap-3">
               {/* BRAND IMAGE LOGO */}
               <img 
-                src={flowfabLogo}
+                src={flowfabLogo} 
                 alt="FlowFab Premium Logo" 
                 className="w-10 h-10 object-contain rounded-lg shadow-md border border-slate-700/50 bg-white"
-                referrerPolicy="no-referrer"
               />
               <span className="text-xl font-black text-white tracking-widest">FLOW<span className="text-teal-500">FAB</span></span>
             </div>
@@ -855,10 +951,9 @@ export default function App() {
       <header className="bg-slate-900 text-white px-4 md:px-8 py-3 flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 shadow-sm print:hidden">
         <div className="flex items-center gap-2">
           <img 
-            src={flowfabLogo}
+            src={flowfabLogo} 
             alt="FlowFab Logo" 
             className="w-8 h-8 rounded-md bg-white p-0.5 object-contain"
-            referrerPolicy="no-referrer"
           />
           <div>
             <span className="text-lg font-black tracking-wider text-white">FLOW<span className="text-teal-400">FAB</span></span>
@@ -1169,15 +1264,25 @@ export default function App() {
                     <h3 className="font-bold text-slate-900">📦 Catalogue d'Affaires Sous-Traitées</h3>
                     <p className="text-xs text-gray-400 mt-1">Listing complet des planifications techniques d'atelier</p>
                   </div>
-                  {isWritable && (
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => { setSelectedProjectForEdit(undefined); setIsProjectModalOpen(true); }}
-                      className="bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs py-2 px-3.5 rounded-lg flex items-center gap-1.5 transition"
+                      onClick={handleExportProjects}
+                      className="bg-white hover:bg-slate-100 text-emerald-700 border border-emerald-300 font-semibold text-xs py-2 px-3.5 rounded-lg flex items-center gap-1.5 transition"
+                      title="Exporter le tableau au format Excel"
                     >
-                      <Plus className="w-4 h-4" />
-                      Créer un projet
+                      <FileSpreadsheet className="w-4 h-4" />
+                      Export Excel
                     </button>
-                  )}
+                    {isWritable && (
+                      <button
+                        onClick={() => { setSelectedProjectForEdit(undefined); setIsProjectModalOpen(true); }}
+                        className="bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs py-2 px-3.5 rounded-lg flex items-center gap-1.5 transition"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Créer un projet
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {filteredProjects.length === 0 ? (
@@ -1384,11 +1489,21 @@ export default function App() {
                 {/* Bloc 1 : Budget */}
                 <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
                   <div className="p-4 bg-slate-50 border-b border-slate-200">
-                    <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                      <span className="p-1 px-1.5 text-xs font-mono font-bold bg-teal-100 text-teal-800 rounded">BLOC 1</span>
-                      📊 Budgets Prévisionnels (Objectif Vente)
-                    </h3>
-                    <p className="text-xs text-gray-400 mt-1">Gérez l’enveloppe prévisionnelle d'affaire sur la fourniture, la main d’œuvre et la sous-traitance.</p>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                        <span className="p-1 px-1.5 text-xs font-mono font-bold bg-teal-100 text-teal-800 rounded">BLOC 1</span>
+                        📊 Budgets Prévisionnels (Objectif Vente)
+                      </h3>
+                      <button
+                        onClick={handleExportBudgetsRealises}
+                        className="bg-white hover:bg-slate-100 text-emerald-700 border border-emerald-300 font-semibold text-xs py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition shrink-0"
+                        title="Exporter Budgets + Réalisés (tableau fusionné) au format Excel"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        Export Excel
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Gérez l'enveloppe prévisionnelle d'affaire sur la fourniture, la main d'œuvre et la sous-traitance.</p>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -1507,10 +1622,20 @@ export default function App() {
                 {/* Bloc 2 : Realises */}
                 <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
                   <div className="p-4 bg-slate-50 border-b border-slate-200">
-                    <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                      <span className="p-1 px-1.5 text-xs font-mono font-bold bg-amber-100 text-amber-800 rounded">BLOC 2</span>
-                      🔨 Achats de Fabrication Réalisés (Réel)
-                    </h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                        <span className="p-1 px-1.5 text-xs font-mono font-bold bg-amber-100 text-amber-800 rounded">BLOC 2</span>
+                        🔨 Achats de Fabrication Réalisés (Réel)
+                      </h3>
+                      <button
+                        onClick={handleExportBudgetsRealises}
+                        className="bg-white hover:bg-slate-100 text-emerald-700 border border-emerald-300 font-semibold text-xs py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition shrink-0"
+                        title="Exporter Budgets + Réalisés (tableau fusionné) au format Excel"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        Export Excel
+                      </button>
+                    </div>
                     <p className="text-xs text-gray-400 mt-1">Suivez les tonnages réellement fabriqués en atelier, ainsi que les dépenses réelles et frais de structure imputés.</p>
                   </div>
 
@@ -1638,15 +1763,25 @@ export default function App() {
                     <h3 className="font-bold text-slate-900">🧾 Suivi de Facturation</h3>
                     <p className="text-xs text-gray-400 mt-1">Gérez l'état d'avancement de votre facturation et liez les prestations d'ateliers.</p>
                   </div>
-                  {isWritable && (
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => { setSelectedBillingForEdit(undefined); setIsBillingModalOpen(true); }}
-                      className="bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs py-2 px-3.5 rounded-lg flex items-center gap-1.5 transition"
+                      onClick={handleExportBillings}
+                      className="bg-white hover:bg-slate-100 text-emerald-700 border border-emerald-300 font-semibold text-xs py-2 px-3.5 rounded-lg flex items-center gap-1.5 transition"
+                      title="Exporter le tableau au format Excel"
                     >
-                      <Plus className="w-4 h-4" />
-                      Saisir une facture
+                      <FileSpreadsheet className="w-4 h-4" />
+                      Export Excel
                     </button>
-                  )}
+                    {isWritable && (
+                      <button
+                        onClick={() => { setSelectedBillingForEdit(undefined); setIsBillingModalOpen(true); }}
+                        className="bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs py-2 px-3.5 rounded-lg flex items-center gap-1.5 transition"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Saisir une facture
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {filteredBillings.length === 0 ? (
