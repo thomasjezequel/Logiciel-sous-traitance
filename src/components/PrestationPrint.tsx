@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { Client, Subcontractor, Project, User } from "../types";
-import { Printer, ArrowLeft, Download, Shield, Landmark } from "lucide-react";
+import { Printer, ArrowLeft, Download, Shield, Landmark, Mail } from "lucide-react";
 import flowfabLogo from "../assets/images/flowfab_logo_1780546723025.png";
 
 interface PrestationPrintProps {
@@ -14,67 +14,103 @@ interface PrestationPrintProps {
 export default function PrestationPrint({ project, client, subcontractor, onClose, user }: PrestationPrintProps) {
   const printAreaRef = useRef<HTMLDivElement>(null);
 
-  const handlePrint = () => {
-    const printContent = printAreaRef.current?.innerHTML;
-    if (printContent) {
-      const tempContainer = document.createElement("div");
-      tempContainer.id = "print-temp-container";
-      tempContainer.className = (printAreaRef.current?.className || "") + " bg-white text-slate-800 p-8";
-      tempContainer.innerHTML = printContent;
-      document.body.appendChild(tempContainer);
-
-      const style = document.createElement("style");
-      style.id = "print-temporary-style";
-      style.innerHTML = `
-        @page {
-          size: A4 portrait;
-          margin: 12mm 15mm 12mm 15mm;
-        }
-        @media print {
-          body > * {
-            display: none !important;
-          }
-          body > #print-temp-container {
-            display: block !important;
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            overflow: visible !important;
-            background: white !important;
-            color: black !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            font-size: 11px !important;
-          }
-          .no-print, .print\\:hidden, button {
-            display: none !important;
-          }
-          table {
-            width: 100% !important;
-            font-size: 10px !important;
-          }
-          h1 { font-size: 14px !important; }
-          h2 { font-size: 11px !important; }
-          h3 { font-size: 10px !important; }
-          /* Ensure backgrounds print correctly */
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            color-adjust: exact !important;
-          }
-        }
-      `;
-      document.head.appendChild(style);
-
-      window.print();
-
-      setTimeout(() => {
-        tempContainer.remove();
-        style.remove();
-      }, 1000);
+  const printStyleContent = `
+    @page {
+      size: A4 portrait;
+      margin: 12mm 15mm 12mm 15mm;
     }
+    @media print {
+      body > * {
+        display: none !important;
+      }
+      body > #print-temp-container {
+        display: block !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+        background: white !important;
+        color: black !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        font-size: 11px !important;
+      }
+      .no-print, .print\\:hidden, button {
+        display: none !important;
+      }
+      table {
+        width: 100% !important;
+        font-size: 10px !important;
+      }
+      h1 { font-size: 14px !important; }
+      h2 { font-size: 11px !important; }
+      h3 { font-size: 10px !important; }
+      /* Ensure backgrounds print correctly */
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
+    }
+  `;
+
+  const triggerBrowserPrint = () => {
+    const printContent = printAreaRef.current?.innerHTML;
+    if (!printContent) return;
+
+    const tempContainer = document.createElement("div");
+    tempContainer.id = "print-temp-container";
+    tempContainer.className = (printAreaRef.current?.className || "") + " bg-white text-slate-800 p-8";
+    tempContainer.innerHTML = printContent;
+    document.body.appendChild(tempContainer);
+
+    const style = document.createElement("style");
+    style.id = "print-temporary-style";
+    style.innerHTML = printStyleContent;
+    document.head.appendChild(style);
+
+    window.print();
+
+    setTimeout(() => {
+      tempContainer.remove();
+      style.remove();
+    }, 1000);
+  };
+
+  const handlePrint = () => {
+    triggerBrowserPrint();
+  };
+
+  // Nom de fichier attendu : ST Fab «sous-traitant»- «affaire»- «zone»
+  const buildFileName = () => {
+    const subName = subcontractor?.nom || "Sous-traitant";
+    return `ST Fab ${subName}- ${project.nomAffaire}- ${project.nomZone}`;
+  };
+
+  const handleSendMail = () => {
+    const fileName = buildFileName();
+    const previousTitle = document.title;
+
+    // Le titre du document devient le nom suggéré lors de l'enregistrement en PDF
+    document.title = fileName;
+
+    triggerBrowserPrint();
+
+    // Restaure le titre d'origine une fois la boîte d'impression fermée
+    setTimeout(() => {
+      document.title = previousTitle;
+    }, 1200);
+
+    // Ouvre la messagerie par défaut avec sujet et corps pré-remplis
+    const subject = encodeURIComponent(`Fiche de prestation - ${project.nomAffaire} - ${project.nomZone}`);
+    const body = encodeURIComponent(
+      `Bonjour,\n\nVeuillez trouver ci-joint la fiche de prestation de l'affaire "${project.nomAffaire}" (zone : ${project.nomZone}).\n\n` +
+      `Merci de bien vouloir joindre manuellement le fichier PDF que vous venez d'enregistrer : "${fileName}.pdf"\n\n` +
+      `Cordialement,\n${user ? user.nom : ""}`
+    );
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };
 
   return (
@@ -91,6 +127,14 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
 
         <div className="flex items-center gap-3">
           <button
+            onClick={handleSendMail}
+            className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition cursor-pointer"
+            title="Imprime la fiche en PDF (nom de fichier pré-rempli) puis ouvre votre messagerie"
+          >
+            <Mail className="w-4 h-4" />
+            Envoyer par mail
+          </button>
+          <button
             onClick={handlePrint}
             className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition cursor-pointer"
           >
@@ -98,6 +142,13 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
             Imprimer la fiche
           </button>
         </div>
+      </div>
+
+      {/* Note d'usage pour l'envoi par mail */}
+      <div className="max-w-4xl mx-auto mb-4 print:hidden">
+        <p className="text-[11px] text-slate-400 italic">
+          💡 "Envoyer par mail" ouvre la boîte d'impression avec le nom de fichier déjà rempli ({buildFileName()}.pdf) — choisissez "Enregistrer en PDF", puis votre messagerie s'ouvrira : il ne restera qu'à glisser le PDF enregistré en pièce jointe.
+        </p>
       </div>
 
       {/* Printable Sheet */}
