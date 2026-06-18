@@ -9,6 +9,7 @@ export const CHECKLIST_FIELDS = [
   { id: "miseEnBarre", label: "Mise en barre" },
   { id: "commandeAcier", label: "Commande acier" },
   { id: "fabricationDiverse", label: "Fabrication diverse" },
+  { id: "fabricationDébit", label: "Fabrication débit seul" },
   { id: "fabricationPDC", label: "Fabrication PDC" },
   { id: "fabricationPRS", label: "Fabrication PRS" },
   { id: "fournitureBoulonnerie", label: "Fourniture boulonnerie" },
@@ -19,6 +20,7 @@ export const CHECKLIST_FIELDS = [
   { id: "paiementFactures", label: "Paiement de la facture" },
   { id: "enlevementSiteProtection", label: "Enlèvement site de protection" },
   { id: "livraisonChantier", label: "Livraison sur chantier" },
+  { id: "livraisonAtelier", label: "Livraison à l'atelier" },
   { id: "pose", label: "Pose" }
 ];
 

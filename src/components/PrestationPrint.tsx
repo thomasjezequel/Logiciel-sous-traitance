@@ -271,17 +271,19 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
             { id: "miseEnBarre", label: "Mise en barre" },
             { id: "commandeAcier", label: "Commande acier" },
             { id: "fabricationDiverse", label: "Fabrication diverse" },
+            { id: "fabricationDébit", label: "Fabrication débit seul" },
             { id: "fabricationPDC", label: "Fabrication PDC" },
             { id: "fabricationPRS", label: "Fabrication PRS" },
             { id: "fournitureBoulonnerie", label: "Fourniture boulonnerie" },
             { id: "fournitureEtiquettes", label: "Fourniture des étiquettes" },
-            { id: "poseEtiquettes", label: "Pose des étiquettes" },
-            { id: "protectionGereePar", label: "Protection gérée par" },
-            { id: "livraisonSiteProtection", label: "Livraison site de protection" },
-            { id: "paiementFactures", label: "Paiement de la facture" },
-            { id: "enlevementSiteProtection", label: "Enlèvement site de protection" },
-            { id: "livraisonChantier", label: "Livraison sur chantier" },
-            { id: "pose", label: "Pose" }
+  	    { id: "poseEtiquettes", label: "Pose des étiquettes" },
+  	    { id: "protectionGereePar", label: "Protection gérée par" },
+  	    { id: "livraisonSiteProtection", label: "Livraison site de protection" },
+  	    { id: "paiementFactures", label: "Paiement de la facture" },
+  	    { id: "enlevementSiteProtection", label: "Enlèvement site de protection" },
+  	    { id: "livraisonChantier", label: "Livraison sur chantier" },
+  	    { id: "livraisonAtelier", label: "Livraison à l'atelier du Client" },
+  	    { id: "pose", label: "Pose" }
           ];
 
           const activeItems = checklistItems.filter(item => {

@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import { Project, Budget, Realise, Client, Subcontractor } from "../types";
-import { X, Printer, FileText, CheckCircle2, AlertTriangle, Coins, TrendingUp } from "lucide-react";
+import { X, Printer, FileText, CheckCircle2, AlertTriangle, Coins, TrendingUp, Scale } from "lucide-react";
 import flowfabLogo from "../assets/images/flowfab_logo_1780546723025.png";
 
 interface BudgetRealisePrintModalProps {
@@ -120,6 +120,13 @@ export default function BudgetRealisePrintModal({
   const marginSaved = bGrandTotal - rGrandTotal;
   const marginPercentage = bGrandTotal > 0 ? (marginSaved / bGrandTotal) * 100 : 0;
   const isProfitable = marginSaved >= 0;
+
+  // TAUX DE CHUTE REALISE (Poids consommé vs Poids fabriqué)
+  const poidsUtiliseReel = (realise as any).poidsUtilise || 0;
+  const poidsSousTraiteReel = (realise as any).poidsSousTraite || 0;
+  const totalConsommeReel = poidsUtiliseReel + poidsSousTraiteReel;
+  const poidsFabriqueReel = realise.poidsFabrique || 0;
+  const tauxChuteReel = poidsFabriqueReel > 0 ? ((totalConsommeReel / poidsFabriqueReel) - 1) * 100 : 0;
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
@@ -351,6 +358,41 @@ export default function BudgetRealisePrintModal({
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* Analyse du Taux de Chute - argument clé pour la prise de décision */}
+          <div className="my-6">
+            <h3 className="text-[11px] font-bold text-slate-950 uppercase tracking-wider border-b border-slate-900 pb-1 font-mono mb-3">
+              ♻️ ANALYSE DU TAUX DE CHUTE — CONSOMMATION MATIÈRE RÉELLE
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <span className="text-[9px] text-gray-500 uppercase tracking-widest block font-mono">Poids Utilisé</span>
+                <span className="text-base font-extrabold text-slate-900 block mt-1">{poidsUtiliseReel.toLocaleString()} kg</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <span className="text-[9px] text-gray-500 uppercase tracking-widest block font-mono">Poids Sous-Traité</span>
+                <span className="text-base font-extrabold text-slate-900 block mt-1">{poidsSousTraiteReel.toLocaleString()} kg</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <span className="text-[9px] text-gray-500 uppercase tracking-widest block font-mono">Poids Fabriqué (Réel Produit)</span>
+                <span className="text-base font-extrabold text-slate-900 block mt-1">{poidsFabriqueReel.toLocaleString()} kg</span>
+              </div>
+            </div>
+            <div className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${tauxChuteReel > 0 ? "bg-rose-50 border-rose-200 text-rose-950" : "bg-emerald-50 border-emerald-200 text-emerald-950"} print:bg-slate-50`}>
+              <div className="flex items-center gap-2.5">
+                <Scale className={`w-5 h-5 shrink-0 ${tauxChuteReel > 0 ? "text-rose-600" : "text-emerald-700"}`} />
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider block">Taux de Chute Réalisé (Consommé vs Fabriqué)</span>
+                  <span className="text-[11px] text-gray-600">
+                    Total consommé : {totalConsommeReel.toLocaleString()} kg ({poidsUtiliseReel.toLocaleString()} kg utilisé + {poidsSousTraiteReel.toLocaleString()} kg sous-traité)
+                  </span>
+                </div>
+              </div>
+              <span className="text-2xl font-black shrink-0">
+                {tauxChuteReel > 0 ? "+" : ""}{tauxChuteReel.toFixed(2)} %
+              </span>
             </div>
           </div>
 
