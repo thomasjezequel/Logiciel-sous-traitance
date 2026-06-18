@@ -906,7 +906,9 @@ app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) =>
     achatsDiversRealise,
     achatsTransportRealise,
     achatsProtectionRealise,
-    achatsHeuresMO
+    achatsHeuresMO,
+    poidsUtilise,
+    poidsSousTraite
   } = req.body;
   const realise = db.realises.find((r) => r.id === id);
   if (!realise) {
@@ -924,6 +926,8 @@ app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) =>
   if (achatsTransportRealise !== void 0) realise.achatsTransportRealise = Number(achatsTransportRealise) || 0;
   if (achatsProtectionRealise !== void 0) realise.achatsProtectionRealise = Number(achatsProtectionRealise) || 0;
   if (achatsHeuresMO !== void 0) realise.achatsHeuresMO = Number(achatsHeuresMO) || 0;
+  if (poidsUtilise !== void 0) realise.poidsUtilise = Number(poidsUtilise) || 0;
+  if (poidsSousTraite !== void 0) realise.poidsSousTraite = Number(poidsSousTraite) || 0;
   saveDatabase();
   syncToFirestore("realises", realise.id, realise);
   res.json(realise);
