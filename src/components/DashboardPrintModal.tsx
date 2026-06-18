@@ -158,6 +158,21 @@ export default function DashboardPrintModal({
     0
   );
 
+  // ─── Tri alphabétique (A→Z) des affaires sur les 3 sections ───
+  const ongoingProjectsSorted = [...ongoingProjects].sort((a, b) =>
+    a.nomAffaire.localeCompare(b.nomAffaire, "fr", { sensitivity: "base" })
+  );
+
+  const finishedUninvoicedProjectsSorted = [...finishedUninvoicedProjects].sort((a, b) =>
+    a.nomAffaire.localeCompare(b.nomAffaire, "fr", { sensitivity: "base" })
+  );
+
+  const pendingBillingsListSorted = [...pendingBillingsList].sort((a, b) => {
+    const projA = projects.find(p => p.id === a.projetId);
+    const projB = projects.find(p => p.id === b.projetId);
+    return (projA?.nomAffaire || "").localeCompare(projB?.nomAffaire || "", "fr", { sensitivity: "base" });
+  });
+
   const ongoingTotal = ongoingProjects.reduce((acc, p) => acc + (p.poidsTotal || 0), 0);
   const finishedTotal = finishedUninvoicedProjects.reduce((acc, p) => acc + (p.poidsTotal || 0), 0);
 
@@ -245,12 +260,12 @@ export default function DashboardPrintModal({
             </div>
           </div>
 
-          {/* ─── Section 1 : Affaires en cours de fabrication ─── */}
+          {/* ─── Section 1 : Affaires en cours de fabrication (triées A→Z) ─── */}
           <div className="space-y-2">
             <h3 className="text-xs font-black text-indigo-800 uppercase tracking-widest block font-mono border-b border-indigo-100 pb-1">
-              📦 1. Affaires & Zones en Cours de Fabrication ({ongoingProjects.length})
+              📦 1. Affaires & Zones en Cours de Fabrication ({ongoingProjectsSorted.length})
             </h3>
-            {ongoingProjects.length === 0 ? (
+            {ongoingProjectsSorted.length === 0 ? (
               <p className="text-xs text-gray-400 italic py-2">Aucun chantier en cours de fabrication trouvé pour ces critères.</p>
             ) : (
               <>
@@ -265,7 +280,7 @@ export default function DashboardPrintModal({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {ongoingProjects.map(p => {
+                    {ongoingProjectsSorted.map(p => {
                       const client = clients.find(c => c.id === p.clientId);
                       const sub = subcontractors.find(s => s.id === p.sousTraitantId);
                       return (
@@ -301,12 +316,12 @@ export default function DashboardPrintModal({
             )}
           </div>
 
-          {/* ─── Section 2 : Terminés non facturés ─── */}
+          {/* ─── Section 2 : Terminés non facturés (triées A→Z) ─── */}
           <div className="space-y-2 pt-2">
             <h3 className="text-xs font-black text-rose-800 uppercase tracking-widest block font-mono border-b border-rose-100 pb-1">
-              🏆 2. Affaires "Terminé de Fabriquer" Non Facturées ({finishedUninvoicedProjects.length})
+              🏆 2. Affaires "Terminé de Fabriquer" Non Facturées ({finishedUninvoicedProjectsSorted.length})
             </h3>
-            {finishedUninvoicedProjects.length === 0 ? (
+            {finishedUninvoicedProjectsSorted.length === 0 ? (
               <p className="text-xs text-gray-400 italic py-2">Aucune affaire terminée non facturée à reporter.</p>
             ) : (
               <>
@@ -321,7 +336,7 @@ export default function DashboardPrintModal({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {finishedUninvoicedProjects.map(p => {
+                    {finishedUninvoicedProjectsSorted.map(p => {
                       const client = clients.find(c => c.id === p.clientId);
                       const sub = subcontractors.find(s => s.id === p.sousTraitantId);
                       return (
@@ -357,12 +372,12 @@ export default function DashboardPrintModal({
             )}
           </div>
 
-          {/* ─── Section 3 : Encours de facturation ─── */}
+          {/* ─── Section 3 : Encours de facturation (triées A→Z) ─── */}
           <div className="space-y-2 pt-2">
             <h3 className="text-xs font-black text-amber-800 uppercase tracking-widest block font-mono border-b border-amber-100 pb-1">
-              💰 3. Créances & Encours de Facturation (Non payées) ({pendingBillingsList.length}) — Total global : {totalPendingAmount.toLocaleString("fr-FR")} €
+              💰 3. Créances & Encours de Facturation (Non payées) ({pendingBillingsListSorted.length}) — Total global : {totalPendingAmount.toLocaleString("fr-FR")} €
             </h3>
-            {pendingBillingsList.length === 0 ? (
+            {pendingBillingsListSorted.length === 0 ? (
               <p className="text-xs text-gray-400 italic py-2">Aucun encours de facturation détecté.</p>
             ) : (
               <>
@@ -377,7 +392,7 @@ export default function DashboardPrintModal({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {pendingBillingsList.map(b => {
+                    {pendingBillingsListSorted.map(b => {
                       const primaryProj = projects.find(p => p.id === b.projetId);
                       const otherProjNames = (b.projetIds || [])
                         .map(pid => projects.find(p => p.id === pid))
