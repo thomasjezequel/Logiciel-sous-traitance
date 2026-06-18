@@ -33,7 +33,9 @@ import {
   ChevronRight, 
   SlidersHorizontal,
   Info,
-  AlertTriangle
+  AlertTriangle,
+  Eye,
+  EyeOff
 } from "lucide-react";
 
 // Sub-components
@@ -98,6 +100,9 @@ export default function App() {
   const [filterDateDebut, setFilterDateDebut] = useState("");
   const [filterDateFin, setFilterDateFin] = useState("");
   const [filterDateType, setFilterDateType] = useState<"facturation" | "echeance">("facturation");
+
+  // Affichage ou masquage des affaires archivées (facturées) - masquées par défaut
+  const [showArchived, setShowArchived] = useState(false);
 
   // Sort States
   const [projectsSort, setProjectsSort] = useState<{ field: string; order: "asc" | "desc" } | null>(null);
@@ -455,6 +460,17 @@ export default function App() {
     return true;
   });
 
+  // Une affaire est considérée "Archivée" dès qu'elle possède au moins une ligne
+  // de facturation au statut "Envoyée" ou "Payée" (= affaire facturée)
+  const isProjectArchived = (projectId: string) => {
+    return billings.some(b =>
+      (b.projetId === projectId || b.projetIds?.includes(projectId)) &&
+      (b.etatFacturation === BillingStatus.ENVOYEE || b.etatFacturation === BillingStatus.PAYEE)
+    );
+  };
+
+  const archivedProjectsCount = permittedProjects.filter(p => isProjectArchived(p.id)).length;
+
   // Filtering calculations applied to Projets, Budgets, and Réalisés
   const filteredProjects = permittedProjects.filter(p => {
     const matchesKeyword = p.nomAffaire.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -467,8 +483,9 @@ export default function App() {
     const matchesSub = filterSub === "" || p.sousTraitantId === filterSub;
     const matchesStatus = filterStatus === "" || p.status === filterStatus;
     const matchesTypeOuvrage = filterTypeOuvrage === "" || p.typeOuvrage === filterTypeOuvrage;
+    const matchesArchiveVisibility = showArchived ? true : !isProjectArchived(p.id);
 
-    return matchesKeyword && matchesClient && matchesSub && matchesStatus && matchesTypeOuvrage;
+    return matchesKeyword && matchesClient && matchesSub && matchesStatus && matchesTypeOuvrage && matchesArchiveVisibility;
   });
 
   // Filters billing uniquely
@@ -680,7 +697,7 @@ export default function App() {
       const cl = clients.find(c => c.id === p.clientId);
       const sub = subcontractors.find(s => s.id === p.sousTraitantId);
       return {
-        "État": p.status === ProjectStatus.TERMINEE ? "Terminée" : "En cours",
+        "État": isProjectArchived(p.id) ? "Archivée" : (p.status === ProjectStatus.TERMINEE ? "Terminée" : "En cours"),
         "Affaire": p.nomAffaire,
         "Zone": p.nomZone,
         "N° Commande": p.numCommande || "",
@@ -1149,7 +1166,22 @@ export default function App() {
                 </>
               )}
 
-              <div className={`flex items-center justify-end ${activeTab === "billings" || activeTab === "projects" ? "md:col-span-4" : ""}`}>
+              <div className={`flex items-center justify-end gap-3 ${activeTab === "billings" || activeTab === "projects" || activeTab === "budgets_realises" ? "md:col-span-4" : ""}`}>
+                {(activeTab === "projects" || activeTab === "budgets_realises") && (
+                  <button
+                    type="button"
+                    onClick={() => setShowArchived(prev => !prev)}
+                    className={`text-xs font-semibold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition border ${
+                      showArchived
+                        ? "bg-slate-700 text-white border-slate-700 hover:bg-slate-800"
+                        : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                    }`}
+                    title="Les affaires facturées (Envoyées ou Payées) basculent automatiquement en Archivé et sont masquées par défaut"
+                  >
+                    {showArchived ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    {showArchived ? "Masquer" : "Afficher"} les archivées ({archivedProjectsCount})
+                  </button>
+                )}
                 <button
                   onClick={() => { 
                     setSearchQuery(""); 
@@ -1393,7 +1425,11 @@ export default function App() {
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-center">
-                                {p.status === ProjectStatus.TERMINEE ? (
+                                {isProjectArchived(p.id) ? (
+                                  <div className="flex justify-center" title="Archivée (Facturée)">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-slate-400 inline-block shadow-xs" title="Archivée (Facturée)" />
+                                  </div>
+                                ) : p.status === ProjectStatus.TERMINEE ? (
                                   <div className="flex justify-center">
                                     <span className="w-2.5 h-2.5 rounded-full bg-rose-600 inline-block shadow-xs" title="Terminée" />
                                   </div>
