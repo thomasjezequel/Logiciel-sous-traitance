@@ -753,7 +753,7 @@ app.get("/api/subcontractors", authenticate, (req, res) => {
 });
  
 app.post("/api/subcontractors", authenticate, requireWritePermission, (req, res) => {
-  const { nom, adresse, coutHoraireMO, fraisGenerauxPct } = req.body;
+  const { nom, adresse, coutHoraireMO, fraisGenerauxPct, estExterieur } = req.body;
   if (!nom) {
     res.status(400).json({ error: "Le nom du sous-traitant est requis" });
     return;
@@ -764,6 +764,7 @@ app.post("/api/subcontractors", authenticate, requireWritePermission, (req, res)
     adresse: adresse || "",
     coutHoraireMO: Number(coutHoraireMO) || 0,
     fraisGenerauxPct: fraisGenerauxPct !== undefined ? Number(fraisGenerauxPct) : 10,
+    estExterieur: !!estExterieur,
     createdAt: new Date().toISOString()
   };
   db.subcontractors.push(newSub);
@@ -774,7 +775,7 @@ app.post("/api/subcontractors", authenticate, requireWritePermission, (req, res)
  
 app.put("/api/subcontractors/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
-  const { nom, adresse, coutHoraireMO, fraisGenerauxPct } = req.body;
+  const { nom, adresse, coutHoraireMO, fraisGenerauxPct, estExterieur } = req.body;
   const sub = db.subcontractors.find(s => s.id === id);
   if (!sub) {
     res.status(404).json({ error: "Sous-traitant introuvable" });
@@ -784,6 +785,7 @@ app.put("/api/subcontractors/:id", authenticate, requireWritePermission, (req, r
   if (adresse !== undefined) sub.adresse = adresse;
   if (coutHoraireMO !== undefined) sub.coutHoraireMO = Number(coutHoraireMO);
   if (fraisGenerauxPct !== undefined) sub.fraisGenerauxPct = Number(fraisGenerauxPct);
+  if (estExterieur !== undefined) (sub as any).estExterieur = !!estExterieur;
  
   saveDatabase();
   syncToFirestore("subcontractors", sub.id, sub);

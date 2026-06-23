@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Client, Subcontractor } from "../types";
-import { X, Save, AlertTriangle } from "lucide-react";
+import { X, Save, AlertTriangle, Factory } from "lucide-react";
 
 interface ClientSubModalProps {
   isOpen: boolean;
@@ -15,7 +15,8 @@ export default function ClientSubModal({ isOpen, onClose, type, item, onSave }: 
     nom: "",
     adresse: "",
     coutHoraireMO: 40,
-    fraisGenerauxPct: 10
+    fraisGenerauxPct: 10,
+    estExterieur: false
   });
 
   const [loading, setLoading] = useState(false);
@@ -23,18 +24,21 @@ export default function ClientSubModal({ isOpen, onClose, type, item, onSave }: 
 
   useEffect(() => {
     if (item) {
+      const itemAny = item as any;
       setFormData({
         nom: item.nom || "",
         adresse: item.adresse || "",
         coutHoraireMO: item.coutHoraireMO || 0,
-        fraisGenerauxPct: item.fraisGenerauxPct !== undefined ? item.fraisGenerauxPct : 10
+        fraisGenerauxPct: item.fraisGenerauxPct !== undefined ? item.fraisGenerauxPct : 10,
+        estExterieur: !!itemAny.estExterieur
       });
     } else {
       setFormData({
         nom: "",
         adresse: "",
         coutHoraireMO: type === "client" ? 45 : 38, // defaults
-        fraisGenerauxPct: 10
+        fraisGenerauxPct: 10,
+        estExterieur: false
       });
     }
     setError(null);
@@ -48,6 +52,17 @@ export default function ClientSubModal({ isOpen, onClose, type, item, onSave }: 
     setFormData(prev => ({
       ...prev,
       [name]: name === "coutHoraireMO" || name === "fraisGenerauxPct" ? Number(value) || 0 : value
+    }));
+  };
+
+  const handleExterieurToggle = (checked: boolean) => {
+    setError(null);
+    setFormData(prev => ({
+      ...prev,
+      estExterieur: checked,
+      // Un sous-traitant extérieur a un accord fixé à la commande : pas de taux horaire ni de FG à gérer
+      coutHoraireMO: checked ? 0 : prev.coutHoraireMO,
+      fraisGenerauxPct: checked ? 0 : prev.fraisGenerauxPct
     }));
   };
 
@@ -71,6 +86,8 @@ export default function ClientSubModal({ isOpen, onClose, type, item, onSave }: 
   const titleText = item
     ? `📝 Modifier ${type === "client" ? "le Client" : "le Sous-traitant"}`
     : `➕ Ajouter ${type === "client" ? "un Client" : "un Sous-traitant"}`;
+
+  const isExternalSubcontractor = type === "subcontractor" && formData.estExterieur;
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
@@ -108,36 +125,68 @@ export default function ClientSubModal({ isOpen, onClose, type, item, onSave }: 
             />
           </div>
 
-          {/* Hourly Labour Cost Field */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 block mb-1">
-              Coût horaire standard de la main d'œuvre ({type === "client" ? "Vendu" : "Achat"}) (€/h)
-            </label>
-            <input
-              type="number"
-              name="coutHoraireMO"
-              min="0"
-              value={formData.coutHoraireMO}
-              onChange={handleChange}
-              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
-            />
-          </div>
+          {/* Sous-traitant extérieur (hors groupe) toggle - uniquement pour les sous-traitants */}
+          {type === "subcontractor" && (
+            <div className="flex items-start gap-2.5 p-3 bg-indigo-50/50 border border-indigo-100 rounded-lg">
+              <input
+                type="checkbox"
+                id="estExterieur"
+                checked={formData.estExterieur}
+                onChange={(e) => handleExterieurToggle(e.target.checked)}
+                className="w-4 h-4 mt-0.5 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded cursor-pointer"
+              />
+              <label htmlFor="estExterieur" className="text-xs cursor-pointer select-none">
+                <span className="font-semibold text-indigo-900 flex items-center gap-1.5">
+                  <Factory className="w-3.5 h-3.5" />
+                  Sous-traitant extérieur (hors groupe)
+                </span>
+                <span className="text-indigo-700/80 block mt-0.5 leading-snug">
+                  Le prix est fixé à la commande : pas de taux horaire ni de frais généraux à gérer pour ce sous-traitant.
+                </span>
+              </label>
+            </div>
+          )}
 
-          {/* Frais généraux (%) Field */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 block mb-1">
-              Paramètre de frais généraux (%)
-            </label>
-            <input
-              type="number"
-              name="fraisGenerauxPct"
-              min="0"
-              max="100"
-              value={formData.fraisGenerauxPct}
-              onChange={handleChange}
-              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
-            />
-          </div>
+          {/* Hourly Labour Cost Field - masqué pour un sous-traitant extérieur */}
+          {!isExternalSubcontractor && (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">
+                Coût horaire standard de la main d'œuvre ({type === "client" ? "Vendu" : "Achat"}) (€/h)
+              </label>
+              <input
+                type="number"
+                name="coutHoraireMO"
+                min="0"
+                value={formData.coutHoraireMO}
+                onChange={handleChange}
+                className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
+              />
+            </div>
+          )}
+
+          {/* Frais généraux (%) Field - masqué pour un sous-traitant extérieur */}
+          {!isExternalSubcontractor && (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">
+                Paramètre de frais généraux (%)
+              </label>
+              <input
+                type="number"
+                name="fraisGenerauxPct"
+                min="0"
+                max="100"
+                value={formData.fraisGenerauxPct}
+                onChange={handleChange}
+                className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
+              />
+            </div>
+          )}
+
+          {isExternalSubcontractor && (
+            <p className="text-[11px] text-gray-400 italic px-1">
+              ℹ️ Le suivi Budget vs Réalisé reste disponible normalement pour ce sous-traitant — seuls le taux horaire et les frais généraux ne sont pas appliqués.
+            </p>
+          )}
 
           {/* Full Physical/Billing Address Field */}
           <div>
