@@ -59,6 +59,13 @@ export default function BillingModal({
   // Projects that do not have any other billing yet
   const availableProjects = projects.filter(p => !projectsWithOtherBillingsStr.has(p.id));
 
+  // Sorted alphabetically by Affaire (puis Zone) pour la liste déroulante
+  const sortedAvailableProjects = [...availableProjects].sort((a, b) => {
+    const nameCompare = a.nomAffaire.localeCompare(b.nomAffaire, "fr", { sensitivity: "base" });
+    if (nameCompare !== 0) return nameCompare;
+    return a.nomZone.localeCompare(b.nomZone, "fr", { sensitivity: "base" });
+  });
+
   // Derive Client & Subcontractor from selected project
   const selectedProject = projects.find(p => p.id === formData.projetId);
   const derivedClient = selectedProject ? clients.find(c => c.id === selectedProject.clientId) : null;
@@ -73,6 +80,13 @@ export default function BillingModal({
         p.numCommande === selectedProject.numCommande
       )
     : [];
+
+  // Sorted alphabetically pour la liste de regroupement multi-affaires
+  const sortedEligibleForMultiSelection = [...eligibleForMultiSelection].sort((a, b) => {
+    const nameCompare = a.nomAffaire.localeCompare(b.nomAffaire, "fr", { sensitivity: "base" });
+    if (nameCompare !== 0) return nameCompare;
+    return a.nomZone.localeCompare(b.nomZone, "fr", { sensitivity: "base" });
+  });
 
   useEffect(() => {
     if (billing) {
@@ -196,7 +210,7 @@ export default function BillingModal({
               className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
             >
               <option value="">-- Sélectionner l'Affaire-Zone --</option>
-              {availableProjects.map(p => (
+              {sortedAvailableProjects.map(p => (
                 <option key={p.id} value={p.id}>
                   {p.nomAffaire} ({p.nomZone})
                 </option>
@@ -219,13 +233,13 @@ export default function BillingModal({
           )}
 
           {/* Multiple reference projects support */}
-          {selectedProject && eligibleForMultiSelection.length > 0 && (
+          {selectedProject && sortedEligibleForMultiSelection.length > 0 && (
             <div className="bg-teal-50/40 border border-teal-200 rounded-lg p-3">
               <span className="text-[11px] font-bold text-teal-800 block mb-1.5 uppercase font-mono tracking-wide">
-                🔗 Regrouper d'autres affaires de même client, sous-traitant ET N° de commande ({eligibleForMultiSelection.length}) :
+                🔗 Regrouper d'autres affaires de même client, sous-traitant ET N° de commande ({sortedEligibleForMultiSelection.length}) :
               </span>
               <div className="space-y-1.5 bg-white p-2.5 rounded border border-teal-100 max-h-36 overflow-y-auto">
-                {eligibleForMultiSelection.map(projItem => {
+                {sortedEligibleForMultiSelection.map(projItem => {
                   const isChecked = formData.projetIds?.includes(projItem.id);
                   return (
                     <label key={projItem.id} className="flex items-center gap-2.5 text-xs text-slate-700 font-medium hover:bg-slate-50 cursor-pointer py-1 px-1.5 rounded transition">

@@ -104,6 +104,9 @@ export default function App() {
   // Affichage ou masquage des affaires archivées (facturées) - masquées par défaut
   const [showArchived, setShowArchived] = useState(false);
 
+  // Affichage ou masquage des factures déjà payées - masquées par défaut
+  const [showPaidBillings, setShowPaidBillings] = useState(false);
+
   // Sort States
   const [projectsSort, setProjectsSort] = useState<{ field: string; order: "asc" | "desc" } | null>({ field: "nomAffaire", order: "asc" });
   const [bloc1Sort, setBloc1Sort] = useState<{ field: string; order: "asc" | "desc" } | null>({ field: "nomAffaire", order: "asc" });
@@ -470,6 +473,7 @@ export default function App() {
   };
 
   const archivedProjectsCount = permittedProjects.filter(p => isProjectArchived(p.id)).length;
+  const paidBillingsCount = permittedBillings.filter(b => b.etatFacturation === BillingStatus.PAYEE).length;
 
   // Filtering calculations applied to Projets, Budgets, and Réalisés
   const filteredProjects = permittedProjects.filter(p => {
@@ -481,9 +485,13 @@ export default function App() {
     
     const matchesClient = filterClient === "" || p.clientId === filterClient;
     const matchesSub = filterSub === "" || p.sousTraitantId === filterSub;
-    const matchesStatus = filterStatus === "" || p.status === filterStatus;
+    const matchesStatus = filterStatus === ""
+      ? true
+      : filterStatus === "ARCHIVED"
+        ? isProjectArchived(p.id)
+        : p.status === filterStatus;
     const matchesTypeOuvrage = filterTypeOuvrage === "" || p.typeOuvrage === filterTypeOuvrage;
-    const matchesArchiveVisibility = showArchived ? true : !isProjectArchived(p.id);
+    const matchesArchiveVisibility = filterStatus === "ARCHIVED" ? true : (showArchived ? true : !isProjectArchived(p.id));
 
     return matchesKeyword && matchesClient && matchesSub && matchesStatus && matchesTypeOuvrage && matchesArchiveVisibility;
   });
@@ -501,6 +509,9 @@ export default function App() {
     const matchesSub = filterSub === "" || proj.sousTraitantId === filterSub;
     const matchesTypeOuvrage = filterTypeOuvrage === "" || proj.typeOuvrage === filterTypeOuvrage;
     const matchesBillingStatus = filterBillingStatus === "" || b.etatFacturation === filterBillingStatus;
+    const matchesPaidVisibility = filterBillingStatus === BillingStatus.PAYEE
+      ? true
+      : (showPaidBillings ? true : b.etatFacturation !== BillingStatus.PAYEE);
     
     let matchesDateDebut = true;
     let matchesDateFin = true;
@@ -513,7 +524,7 @@ export default function App() {
       matchesDateFin = targetDateStr <= filterDateFin;
     }
     
-    return matchesKeyword && matchesClient && matchesSub && matchesTypeOuvrage && matchesBillingStatus && matchesDateDebut && matchesDateFin;
+    return matchesKeyword && matchesClient && matchesSub && matchesTypeOuvrage && matchesBillingStatus && matchesPaidVisibility && matchesDateDebut && matchesDateFin;
   });
 
   // Sorting evaluators
@@ -1135,6 +1146,7 @@ export default function App() {
                     <option value="">-- État de la Fabrication --</option>
                     <option value={ProjectStatus.EN_COURS}>🟢 En cours</option>
                     <option value={ProjectStatus.TERMINEE}>🔴 Terminée</option>
+                    <option value="ARCHIVED">⚪ Archivée (Facturée)</option>
                   </select>
                 </div>
               ) : (
@@ -1180,6 +1192,21 @@ export default function App() {
                   >
                     {showArchived ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                     {showArchived ? "Masquer" : "Afficher"} les archivées ({archivedProjectsCount})
+                  </button>
+                )}
+                {activeTab === "billings" && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPaidBillings(prev => !prev)}
+                    className={`text-xs font-semibold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition border ${
+                      showPaidBillings
+                        ? "bg-slate-700 text-white border-slate-700 hover:bg-slate-800"
+                        : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                    }`}
+                    title="Les factures au statut Payée sont masquées par défaut"
+                  >
+                    {showPaidBillings ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    {showPaidBillings ? "Masquer" : "Afficher"} les payées ({paidBillingsCount})
                   </button>
                 )}
                 <button
