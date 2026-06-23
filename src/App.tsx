@@ -823,7 +823,7 @@ export default function App() {
 
 
 
-          <p className="text-xs text-slate-500 mt-8 font-mono">FlowFab v1.0.0 • Pilotage de Fabrication</p>
+          <p className="text-xs text-slate-500 mt-8 font-mono">FlowFab v3.1.0 • Pilotage de Fabrication</p>
         </div>
 
         {/* Right Form Input Section */}
@@ -953,7 +953,7 @@ export default function App() {
             )}
 
             <div className="text-[11px] text-slate-500 leading-relaxed text-center pt-2">
-              Note : L'adresse <span className="text-slate-400 font-semibold">thomas.jezequel@emg.bzh</span> bénéficiera d'une approbation de droit d'administration immédiate sur le système.
+              Note : Pour toute première connexion, pensez à demander un compte.
             </div>
 
           </div>
