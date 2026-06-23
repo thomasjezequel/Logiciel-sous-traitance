@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Project, ProjectStatus, Budget, Realise, Billing, BillingStatus, Subcontractor, Client } from "../types";
 import { 
   Hammer, 
@@ -11,7 +11,10 @@ import {
   Building,
   Activity,
   RotateCcw,
-  Printer
+  Printer,
+  FileText,
+  BarChart3,
+  Receipt
 } from "lucide-react";
 import DashboardPrintModal from "./DashboardPrintModal";
 
@@ -22,15 +25,57 @@ interface DashboardViewProps {
   billings: Billing[];
   subcontractors: Subcontractor[];
   clients: Client[];
+  onOpenPrestation: (project: Project) => void;
+  onOpenBudgetRealise: (project: Project) => void;
+  onOpenBillingPrint: (billing: Billing) => void;
 }
 
-export default function DashboardView({ projects, budgets, realises, billings, subcontractors, clients }: DashboardViewProps) {
+interface ContextMenuState {
+  x: number;
+  y: number;
+  project: Project;
+  billing?: Billing;
+}
+
+export default function DashboardView({
+  projects,
+  budgets,
+  realises,
+  billings,
+  subcontractors,
+  clients,
+  onOpenPrestation,
+  onOpenBudgetRealise,
+  onOpenBillingPrint
+}: DashboardViewProps) {
   // Filtres Globaux
   const [selectedSub, setSelectedSub] = useState<string>("");
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [dateDebut, setDateDebut] = useState<string>("");
   const [dateFin, setDateFin] = useState<string>("");
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Menu contextuel au double-clic (3 options : Fiche Prestation / Fiche Décision / Accord de Facturation)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const closeMenu = () => setContextMenu(null);
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+    };
+  }, [contextMenu]);
+
+  const handleCardDoubleClick = (e: React.MouseEvent, project: Project | undefined, billing?: Billing) => {
+    if (!project) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, project, billing });
+  };
 
   const handleQuickPeriod = (type: "J" | "S" | "M" | "T" | "Se" | "A" | "X") => {
     if (type === "X") {
@@ -190,6 +235,14 @@ export default function DashboardView({ projects, budgets, realises, billings, s
     setDateDebut("");
     setDateFin("");
   };
+
+  // Position calculée du menu contextuel (pour éviter qu'il sorte de l'écran)
+  const menuStyle = contextMenu
+    ? {
+        top: Math.min(contextMenu.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 170),
+        left: Math.min(contextMenu.x, (typeof window !== "undefined" ? window.innerWidth : 1200) - 250)
+      }
+    : {};
 
   return (
     <div className="space-y-6">
@@ -380,7 +433,7 @@ export default function DashboardView({ projects, budgets, realises, billings, s
           <div>
             <span className="text-xs font-bold text-indigo-700 uppercase tracking-widest block font-mono">SUIVI DES ATELIERS</span>
             <h3 className="text-sm font-bold text-slate-900 block min-h-[36px]">Affaires en Cours de Fab. <span className="text-xs font-normal text-slate-400 block">(Non facturées)</span></h3>
-            <p className="text-xs text-slate-400 mt-1">Chantiers actuellement en cours de production</p>
+            <p className="text-xs text-slate-400 mt-1">Chantiers actuellement en cours de production • <span className="italic">double-cliquez une affaire pour ses fiches</span></p>
           </div>
           <div className="max-h-[300px] overflow-y-auto space-y-3 pr-1">
             {(() => {
@@ -402,7 +455,12 @@ export default function DashboardView({ projects, budgets, realises, billings, s
                 const client = clients.find(c => c.id === proj.clientId);
                 const sub = subcontractors.find(s => s.id === proj.sousTraitantId);
                 return (
-                  <div key={proj.id} className="p-3 bg-indigo-50/40 border border-indigo-100 rounded-lg text-xs space-y-1 hover:bg-indigo-50/70 transition">
+                  <div
+                    key={proj.id}
+                    onDoubleClick={(e) => handleCardDoubleClick(e, proj)}
+                    title="Double-cliquez pour les fiches d'impression"
+                    className="p-3 bg-indigo-50/40 border border-indigo-100 rounded-lg text-xs space-y-1 hover:bg-indigo-50/70 transition cursor-pointer select-none"
+                  >
                     <div className="flex justify-between items-start">
                       <span className="font-extrabold text-slate-900 uppercase leading-tight">{proj.nomAffaire} - {proj.nomZone}</span>
                       <span className="font-mono bg-indigo-100 text-indigo-800 text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0">En cours</span>
@@ -431,7 +489,7 @@ export default function DashboardView({ projects, budgets, realises, billings, s
           <div>
             <span className="text-xs font-bold text-rose-700 uppercase tracking-widest block font-mono">FIN DE PRODUCTION</span>
             <h3 className="text-sm font-bold text-slate-900 block min-h-[36px]">Terminé de Fabriquer <span className="text-xs font-normal text-slate-400 block">(Non facturées)</span></h3>
-            <p className="text-xs text-slate-400 mt-1">Chantiers finis en atelier prêts pour facturation</p>
+            <p className="text-xs text-slate-400 mt-1">Chantiers finis en atelier prêts pour facturation • <span className="italic">double-cliquez une affaire pour ses fiches</span></p>
           </div>
           <div className="max-h-[300px] overflow-y-auto space-y-3 pr-1">
             {(() => {
@@ -453,7 +511,12 @@ export default function DashboardView({ projects, budgets, realises, billings, s
                 const client = clients.find(c => c.id === proj.clientId);
                 const sub = subcontractors.find(s => s.id === proj.sousTraitantId);
                 return (
-                  <div key={proj.id} className="p-3 bg-rose-50/40 border border-rose-100 rounded-lg text-xs space-y-1 hover:bg-rose-50/70 transition">
+                  <div
+                    key={proj.id}
+                    onDoubleClick={(e) => handleCardDoubleClick(e, proj)}
+                    title="Double-cliquez pour les fiches d'impression"
+                    className="p-3 bg-rose-50/40 border border-rose-100 rounded-lg text-xs space-y-1 hover:bg-rose-50/70 transition cursor-pointer select-none"
+                  >
                     <div className="flex justify-between items-start">
                       <span className="font-extrabold text-rose-950 uppercase leading-tight">{proj.nomAffaire} - {proj.nomZone}</span>
                       <span className="font-mono bg-rose-100 text-rose-800 text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 font-extrabold">Fini</span>
@@ -482,7 +545,7 @@ export default function DashboardView({ projects, budgets, realises, billings, s
           <div>
             <span className="text-xs font-bold text-amber-700 uppercase tracking-widest block font-mono">RELANCES DE TRÉSORERIE</span>
             <h3 className="text-sm font-bold text-slate-900 block min-h-[36px]">Affaires Facturées <span className="text-xs font-normal text-slate-400 block">(Non payées)</span></h3>
-            <p className="text-xs text-slate-400 mt-1">Encours de factures ou de brouillons en attente de paiement</p>
+            <p className="text-xs text-slate-400 mt-1">Encours de factures ou de brouillons en attente de paiement • <span className="italic">double-cliquez pour ses fiches</span></p>
           </div>
           <div className="max-h-[300px] overflow-y-auto space-y-3 pr-1">
             {(() => {
@@ -506,7 +569,12 @@ export default function DashboardView({ projects, budgets, realises, billings, s
                 const allZones = [primaryProj?.nomZone, ...otherProjNames].filter(Boolean).join(", ");
                 
                 return (
-                  <div key={bill.id} className="p-3 bg-amber-50/20 border border-amber-200 rounded-lg text-xs space-y-1 hover:bg-amber-50/40 transition">
+                  <div
+                    key={bill.id}
+                    onDoubleClick={(e) => handleCardDoubleClick(e, primaryProj, bill)}
+                    title="Double-cliquez pour les fiches d'impression"
+                    className="p-3 bg-amber-50/20 border border-amber-200 rounded-lg text-xs space-y-1 hover:bg-amber-50/40 transition cursor-pointer select-none"
+                  >
                     <div className="flex justify-between items-start">
                       <span className="font-extrabold text-slate-950 uppercase leading-tight">{primaryProj?.nomAffaire || "Affaire"} ({allZones})</span>
                       <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${bill.etatFacturation === BillingStatus.ENVOYEE ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-700"}`}>
@@ -662,6 +730,53 @@ export default function DashboardView({ projects, budgets, realises, billings, s
           dateDebut={dateDebut}
           dateFin={dateFin}
         />
+      )}
+
+      {/* Menu contextuel au double-clic : 3 options de fiches d'impression */}
+      {contextMenu && (
+        <div
+          className="fixed z-[60] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 min-w-[245px] text-xs animate-in"
+          style={menuStyle}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1 truncate">
+            {contextMenu.project.nomAffaire} ({contextMenu.project.nomZone})
+          </div>
+
+          <button
+            onClick={() => { onOpenPrestation(contextMenu.project); setContextMenu(null); }}
+            className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2.5 font-semibold text-slate-700 transition"
+          >
+            <FileText className="w-4 h-4 text-teal-600 shrink-0" />
+            Fiche de Prestation
+          </button>
+
+          <button
+            onClick={() => { onOpenBudgetRealise(contextMenu.project); setContextMenu(null); }}
+            className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2.5 font-semibold text-slate-700 transition"
+          >
+            <BarChart3 className="w-4 h-4 text-amber-600 shrink-0" />
+            Fiche Décision (Budget/Réel)
+          </button>
+
+          {contextMenu.billing ? (
+            <button
+              onClick={() => { onOpenBillingPrint(contextMenu.billing!); setContextMenu(null); }}
+              className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2.5 font-semibold text-slate-700 transition"
+            >
+              <Receipt className="w-4 h-4 text-indigo-600 shrink-0" />
+              Accord de Facturation
+            </button>
+          ) : (
+            <div
+              className="w-full text-left px-3 py-2 flex items-center gap-2.5 font-semibold text-slate-350 cursor-not-allowed"
+              title="Disponible uniquement pour les affaires déjà facturées"
+            >
+              <Receipt className="w-4 h-4 text-slate-300 shrink-0" />
+              <span className="text-slate-350">Accord de Facturation</span>
+            </div>
+          )}
+        </div>
       )}
 
     </div>

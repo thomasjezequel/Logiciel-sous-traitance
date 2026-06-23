@@ -1322,6 +1322,15 @@ export default function App() {
                 billings={permittedBillings}
                 subcontractors={subcontractors}
                 clients={permittedClients}
+                onOpenPrestation={(p) => setPrintableProject(p)}
+                onOpenBudgetRealise={(p) => {
+                  setSelectedProjectForFinancePrint(p);
+                  setIsPrintFinanceModalOpen(true);
+                }}
+                onOpenBillingPrint={(b) => {
+                  setSelectedBillingForPrint(b);
+                  setIsPrintBillingModalOpen(true);
+                }}
               />
             )}
 
