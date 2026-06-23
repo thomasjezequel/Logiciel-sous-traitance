@@ -105,10 +105,10 @@ export default function App() {
   const [showArchived, setShowArchived] = useState(false);
 
   // Sort States
-  const [projectsSort, setProjectsSort] = useState<{ field: string; order: "asc" | "desc" } | null>(null);
-  const [bloc1Sort, setBloc1Sort] = useState<{ field: string; order: "asc" | "desc" } | null>(null);
-  const [bloc2Sort, setBloc2Sort] = useState<{ field: string; order: "asc" | "desc" } | null>(null);
-  const [billingsSort, setBillingsSort] = useState<{ field: string; order: "asc" | "desc" } | null>(null);
+  const [projectsSort, setProjectsSort] = useState<{ field: string; order: "asc" | "desc" } | null>({ field: "nomAffaire", order: "asc" });
+  const [bloc1Sort, setBloc1Sort] = useState<{ field: string; order: "asc" | "desc" } | null>({ field: "nomAffaire", order: "asc" });
+  const [bloc2Sort, setBloc2Sort] = useState<{ field: string; order: "asc" | "desc" } | null>({ field: "nomAffaire", order: "asc" });
+  const [billingsSort, setBillingsSort] = useState<{ field: string; order: "asc" | "desc" } | null>({ field: "nomAffaire", order: "asc" });
 
   const getSortIcon = (field: string, currentSort: { field: string; order: "asc" | "desc" } | null) => {
     if (!currentSort || currentSort.field !== field) {
