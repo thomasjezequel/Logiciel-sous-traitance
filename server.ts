@@ -862,6 +862,7 @@ app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
     nomAffaire: data.nomAffaire,
     nomZone: data.nomZone,
     numCommande: data.numCommande || "",
+    numCommandeSousTraitant: data.numCommandeSousTraitant || "",
     dateCommande: data.dateCommande || new Date().toISOString().substring(0, 10),
     clientId: data.clientId,
     poidsTotal: computedPoidsTotal,
@@ -927,6 +928,7 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
   if (data.nomAffaire !== undefined) project.nomAffaire = data.nomAffaire;
   if (data.nomZone !== undefined) project.nomZone = data.nomZone;
   if (data.numCommande !== undefined) project.numCommande = data.numCommande;
+  if (data.numCommandeSousTraitant !== undefined) project.numCommandeSousTraitant = data.numCommandeSousTraitant;
   if (data.dateCommande !== undefined) project.dateCommande = data.dateCommande;
   if (data.clientId !== undefined) project.clientId = data.clientId;
   

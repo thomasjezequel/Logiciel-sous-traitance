@@ -38,6 +38,7 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
     nomAffaire: "",
     nomZone: "",
     numCommande: "",
+    numCommandeSousTraitant: "",
     dateCommande: new Date().toISOString().substring(0, 10),
     clientId: "",
     poidsTotal: 0,
@@ -77,6 +78,7 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
       setFormData({
         ...project,
         // Ensure string formats in inputs
+        numCommandeSousTraitant: project.numCommandeSousTraitant || "",
         dateCommande: project.dateCommande || "",
         delaiLivraisonProtection: project.delaiLivraisonProtection || "",
         delaiLivraisonChantier: project.delaiLivraisonChantier || "",
@@ -92,6 +94,7 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
         nomAffaire: "",
         nomZone: "",
         numCommande: "",
+        numCommandeSousTraitant: "",
         dateCommande: new Date().toISOString().substring(0, 10),
         clientId: clients.length > 0 ? clients[0].id : "",
         poidsTotal: 0,
@@ -241,7 +244,7 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 block mb-1">N° Commande</label>
+                <label className="text-xs font-medium text-gray-500 block mb-1">N° Commande Client</label>
                 <input
                   type="text"
                   name="numCommande"
@@ -250,6 +253,18 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
                   onChange={handleChange}
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
                 />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-indigo-700 block mb-1 font-semibold">N° Commande Sous-Traitant</label>
+                <input
+                  type="text"
+                  name="numCommandeSousTraitant"
+                  placeholder="ex: ST-2026-045"
+                  value={formData.numCommandeSousTraitant || ""}
+                  onChange={handleChange}
+                  className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
+                />
+                <span className="text-[10px] text-gray-400 block mt-1">Référence interne du sous-traitant, utile pour la comptabilité analytique</span>
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-500 block mb-1">Date Commande</label>

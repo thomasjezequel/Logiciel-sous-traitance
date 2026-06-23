@@ -156,8 +156,11 @@ export default function BillingPrintModal({
                 <span className="text-gray-400 font-medium col-span-1">Affaire :</span>
                 <span className="font-bold text-slate-900 col-span-2">{mainProject.nomAffaire}</span>
 
-                <span className="text-gray-400 font-medium col-span-1">N° de commande :</span>
+                <span className="text-gray-400 font-medium col-span-1">N° de commande Client :</span>
                 <span className="font-semibold text-slate-800 col-span-2">{mainProject.numCommande || "Non spécifié"}</span>
+
+                <span className="text-gray-400 font-medium col-span-1">Réf. Commande Sous-Traitant :</span>
+                <span className="font-semibold text-indigo-700 col-span-2">{(mainProject as any).numCommandeSousTraitant || "Non spécifiée"}</span>
 
                 <span className="text-gray-400 font-medium col-span-1">Zone / Lot :</span>
                 <span className="font-semibold text-slate-700 col-span-2">{associatedProjects.map(ap => ap.nomZone).join(", ")}</span>
@@ -182,6 +185,9 @@ export default function BillingPrintModal({
 
                 <span className="text-gray-400 font-medium col-span-1">Prix Unitaire :</span>
                 <span className="font-bold text-slate-900 col-span-2">{billing.prixUnitaire.toLocaleString("fr-FR")} € / {billing.uniteFacturee}</span>
+
+                <span className="text-gray-400 font-medium col-span-1">État :</span>
+                <span className="font-semibold text-slate-800 col-span-2">{billing.etatFacturation}</span>
 
                 <span className="text-gray-400 font-medium col-span-1">Date Facturation :</span>
                 <span className="font-semibold text-slate-800 col-span-2">{billing.dateFacturation ? new Date(billing.dateFacturation).toLocaleDateString("fr-FR") : "Non renseignée"}</span>
