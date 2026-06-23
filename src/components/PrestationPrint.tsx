@@ -107,7 +107,7 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
     const subject = encodeURIComponent(`Fiche de prestation - ${project.nomAffaire} - ${project.nomZone}`);
     const body = encodeURIComponent(
       `Bonjour,\n\nVeuillez trouver ci-joint la fiche de prestation de l'affaire "${project.nomAffaire}" (zone : ${project.nomZone}).\n\n` +
-      `Merci de bien vouloir joindre manuellement le fichier PDF que vous venez d'enregistrer : "${fileName}.pdf"\n\n` +
+      `Nom du fichier : "${fileName}.pdf"\n\n` +
       `Cordialement,\n${user ? user.nom : ""}`
     );
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
