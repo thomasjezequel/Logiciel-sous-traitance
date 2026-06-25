@@ -163,7 +163,7 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
           <div className="text-right">
             <h1 className="text-xl font-bold uppercase tracking-tight text-slate-950">FICHE DE PRESTATION</h1>
             <p className="text-sm bg-slate-100 print:bg-gray-100 px-3 py-1 font-mono inline-block rounded mt-1 text-slate-800">
-              Cde N° : <span className="font-bold">{project.numCommande || "N/A"}</span>
+              N° Affaire {client?.nom || "Client"} : <span className="font-bold">{project.numCommande || "N/A"}</span>
             </p>
             <p className="text-xs text-gray-500 mt-1 font-mono">Date : {project.dateCommande ? project.dateCommande.split("-").reverse().join("/") : "N/A"}</p>
           </div>
@@ -248,13 +248,13 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
                 )}
                 {project.poidsPDC && (
                   <tr>
-                    <td className="px-4 py-3 font-medium text-slate-800">Poids PDC (Plaques de cisaillement / goussets)</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">Poids PDC (Profilés Du Commerce)</td>
                     <td className="px-4 py-3 text-right text-slate-800 font-semibold">{project.poidsPDC.toLocaleString()} kg</td>
                   </tr>
                 )}
                 {project.quantiteMl && (
                   <tr>
-                    <td className="px-4 py-3 font-medium text-slate-800">Quantité en ml (le cas échéant)</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">Quantité en ml (PRS)</td>
                     <td className="px-4 py-3 text-right text-slate-800 font-semibold">{project.quantiteMl} ml</td>
                   </tr>
                 )}
