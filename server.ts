@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import helmet from "helmet";
 import { createServer as createViteServer } from "vite";
 import { 
   User, 
@@ -19,12 +20,12 @@ import {
   BillingStatus,
   ProjectStatus
 } from "./src/types.js";
- 
+
 const app = express();
 app.set("trust proxy", 1); // Nécessaire derrière le proxy Railway pour obtenir la vraie IP du visiteur
 const PORT = 3000;
 const DB_FILE = path.join(process.cwd(), "db.json");
- 
+
 // Clé secrète utilisée pour signer les jetons de connexion (JWT-like).
 // IMPORTANT : configurez la variable d'environnement JWT_SECRET sur Railway en production.
 // Sans elle, un secret aléatoire est généré à chaque démarrage, ce qui déconnecte tout le monde au redémarrage du serveur.
@@ -32,7 +33,7 @@ const JWT_SECRET: string = process.env.JWT_SECRET || (() => {
   console.warn("⚠️  ATTENTION SÉCURITÉ : la variable d'environnement JWT_SECRET n'est pas définie. Un secret temporaire aléatoire est utilisé pour cette session serveur. Configurez JWT_SECRET dans les variables d'environnement Railway pour la production.");
   return crypto.randomBytes(32).toString("hex");
 })();
- 
+
 // Mot de passe initial du compte administrateur (utilisé uniquement lors de la toute première création de la base).
 // IMPORTANT : configurez ADMIN_SEED_PASSWORD dans les variables d'environnement, puis changez ce mot de passe
 // depuis l'application (onglet Profil) dès la première connexion.
@@ -40,15 +41,38 @@ const ADMIN_SEED_PASSWORD: string = process.env.ADMIN_SEED_PASSWORD || (() => {
   console.warn("⚠️  ATTENTION SÉCURITÉ : ADMIN_SEED_PASSWORD n'est pas défini. Un mot de passe temporaire aléatoire a été généré pour l'amorçage initial — configurez cette variable d'environnement et changez le mot de passe admin via l'application au plus vite.");
   return "Temp_" + crypto.randomBytes(6).toString("hex");
 })();
- 
+
+// Sécurise les en-têtes HTTP (anti-clickjacking, anti-sniffing MIME, etc.)
+// La politique de contenu (CSP) est désactivée pour éviter de bloquer par erreur des ressources
+// déjà utilisées par l'application (polices, images...). Les autres protections restent actives.
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// Liste des origines autorisées à appeler cette API. Configurable via la variable d'environnement
+// FRONTEND_URL si le nom de domaine change un jour, sans avoir à modifier le code.
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "https://logiciel-sous-traitance-production.up.railway.app",
+  "https://flowbase-29.web.app",
+  "http://localhost:5173"
+].filter(Boolean) as string[];
+
 // Middleware to parse JSON
 app.use(cors({
-  origin: "https://flowbase-29.web.app",
+  origin: allowedOrigins,
   credentials: true
 }));
 app.use(express.json());
- 
+
 // Type-safe DB schema
+interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  actorEmail: string;
+  actorNom: string;
+  action: string;
+  details: string;
+}
+
 interface DatabaseSchema {
   users: Array<User & { passwordHash: string }>;
   clients: Client[];
@@ -58,8 +82,9 @@ interface DatabaseSchema {
   realises: Realise[];
   billings: Billing[];
   typesOuvrage: string[];
+  auditLog: AuditLogEntry[];
 }
- 
+
 // Default Seed Data
 const DEFAULT_DB: DatabaseSchema = {
   users: [
@@ -250,12 +275,13 @@ const DEFAULT_DB: DatabaseSchema = {
       dateFacturation: "2026-05-28",
       dateEcheance: "2026-06-28"
     }
-  ]
+  ],
+  auditLog: []
 };
- 
+
 // Database state
 let db: DatabaseSchema = { ...DEFAULT_DB };
- 
+
 // Read DB from file
 function loadDatabase() {
   try {
@@ -272,6 +298,7 @@ function loadDatabase() {
         realises: loaded.realises || DEFAULT_DB.realises,
         billings: loaded.billings || DEFAULT_DB.billings,
         typesOuvrage: loaded.typesOuvrage || DEFAULT_DB.typesOuvrage,
+        auditLog: loaded.auditLog || [],
       };
       console.log("Database successfully loaded from", DB_FILE);
     } else {
@@ -282,7 +309,7 @@ function loadDatabase() {
     console.error("Error loading database file. Using in-memory fallback:", err);
   }
 }
- 
+
 // Write DB to file
 function saveDatabase() {
   try {
@@ -291,21 +318,21 @@ function saveDatabase() {
     console.error("Error saving database file:", err);
   }
 }
- 
+
 // --- Firebase Initialisation & Setup ---
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, collection, doc, getDocs, getDoc, setDoc, deleteDoc, setLogLevel } from "firebase/firestore";
- 
+
 const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
 const firebaseConfig = process.env.FIREBASE_CONFIG
   ? JSON.parse(process.env.FIREBASE_CONFIG)
   : fs.existsSync(firebaseConfigPath)
     ? JSON.parse(fs.readFileSync(firebaseConfigPath, "utf-8"))
     : null;
- 
+
 let firebaseApp: any = null;
 let firestoreDb: any = null;
- 
+
 if (firebaseConfig) {
   try {
     firebaseApp = initializeApp(firebaseConfig);
@@ -320,7 +347,7 @@ if (firebaseConfig) {
 } else {
   console.log("[Firebase] No firebase-applet-config.json config found. Running in local/in-memory mode.");
 }
- 
+
 async function syncToFirestore(col: string, id: string, data: any) {
   if (!firestoreDb) return;
   try {
@@ -332,7 +359,7 @@ async function syncToFirestore(col: string, id: string, data: any) {
     console.error(`[Firebase] Error syncing ${col}/${id}:`, JSON.stringify(err));
   }
 }
- 
+
 async function deleteFromFirestore(col: string, id: string) {
   if (!firestoreDb) return;
   try {
@@ -342,7 +369,7 @@ async function deleteFromFirestore(col: string, id: string) {
     console.error(`[Firebase] Error deleting ${col}/${id}:`, err);
   }
 }
- 
+
 async function seedFirestoreFromDefault() {
   if (!firestoreDb) return;
   console.log("[Firebase] Seeding Firestore with default database structures...");
@@ -374,7 +401,7 @@ async function seedFirestoreFromDefault() {
     console.error("[Firebase] Error seeding default data to Firestore:", err);
   }
 }
- 
+
 async function loadDatabaseFromFirestore() {
   if (!firestoreDb) {
     loadDatabase();
@@ -385,37 +412,43 @@ async function loadDatabaseFromFirestore() {
     const usersSnap = await getDocs(collection(firestoreDb, "users"));
     const users: any[] = [];
     usersSnap.forEach((d) => users.push(d.data()));
- 
+
     const clientsSnap = await getDocs(collection(firestoreDb, "clients"));
     const clients: any[] = [];
     clientsSnap.forEach((d) => clients.push(d.data()));
- 
+
     const subcontractorsSnap = await getDocs(collection(firestoreDb, "subcontractors"));
     const subcontractors: any[] = [];
     subcontractorsSnap.forEach((d) => subcontractors.push(d.data()));
- 
+
     const projectsSnap = await getDocs(collection(firestoreDb, "projects"));
     const projects: any[] = [];
     projectsSnap.forEach((d) => projects.push(d.data()));
- 
+
     const budgetsSnap = await getDocs(collection(firestoreDb, "budgets"));
     const budgets: any[] = [];
     budgetsSnap.forEach((d) => budgets.push(d.data()));
- 
+
     const realisesSnap = await getDocs(collection(firestoreDb, "realises"));
     const realises: any[] = [];
     realisesSnap.forEach((d) => realises.push(d.data()));
- 
+
     const billingsSnap = await getDocs(collection(firestoreDb, "billings"));
     const billings: any[] = [];
     billingsSnap.forEach((d) => billings.push(d.data()));
- 
+
     const typeDoc = await getDoc(doc(firestoreDb, "metadata", "global"));
     let typesOuvrage = DEFAULT_DB.typesOuvrage;
     if (typeDoc.exists() && typeDoc.data()?.typesOuvrage) {
       typesOuvrage = typeDoc.data()?.typesOuvrage;
     }
- 
+
+    const auditDoc = await getDoc(doc(firestoreDb, "metadata", "auditLog"));
+    let auditLog: AuditLogEntry[] = [];
+    if (auditDoc.exists() && Array.isArray(auditDoc.data()?.entries)) {
+      auditLog = auditDoc.data()?.entries;
+    }
+
     // Seed if empty
     if (users.length === 0 && clients.length === 0 && projects.length === 0) {
       await seedFirestoreFromDefault();
@@ -423,7 +456,7 @@ async function loadDatabaseFromFirestore() {
       await loadDatabaseFromFirestore();
       return;
     }
- 
+
     db = {
       users,
       clients,
@@ -432,7 +465,8 @@ async function loadDatabaseFromFirestore() {
       budgets,
       realises,
       billings,
-      typesOuvrage
+      typesOuvrage,
+      auditLog
     };
     console.log("[Firebase] Successfully loaded database state from Firestore!");
     // Keep local backup up-to-date
@@ -442,22 +476,22 @@ async function loadDatabaseFromFirestore() {
     loadDatabase();
   }
 }
- 
+
 loadDatabase();
- 
- 
+
+
 // --- Auth Utilities ---
- 
+
 // Encodage base64url (sans caractères réservés des URLs, sans padding)
 function base64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
- 
+
 function base64urlDecode(input: string): Buffer {
   const padded = input.replace(/-/g, "+").replace(/_/g, "/");
   return Buffer.from(padded, "base64");
 }
- 
+
 // Jeton de connexion signé (type JWT) : impossible à falsifier sans connaître JWT_SECRET.
 // Toute modification du contenu (userId, expiration) invalide automatiquement la signature.
 function generateToken(userId: string): string {
@@ -466,22 +500,22 @@ function generateToken(userId: string): string {
   const signature = base64url(crypto.createHmac("sha256", JWT_SECRET).update(payloadStr).digest());
   return `${payloadStr}.${signature}`;
 }
- 
+
 function parseToken(token: string): { userId: string; expires: number } | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 2) return null;
     const [payloadStr, signature] = parts;
- 
+
     const expectedSignature = base64url(crypto.createHmac("sha256", JWT_SECRET).update(payloadStr).digest());
- 
+
     // Comparaison à temps constant pour éviter les attaques par mesure de timing
     const sigBuf = Buffer.from(signature);
     const expectedBuf = Buffer.from(expectedSignature);
     if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
       return null;
     }
- 
+
     const payload = JSON.parse(base64urlDecode(payloadStr).toString("utf-8"));
     if (!payload || !payload.userId || !payload.expires) return null;
     return payload;
@@ -489,7 +523,7 @@ function parseToken(token: string): { userId: string; expires: number } | null {
     return null;
   }
 }
- 
+
 // Authentication Middleware
 function authenticate(req: express.Request, res: express.Response, next: express.NextFunction) {
   const authHeader = req.headers.authorization;
@@ -520,7 +554,7 @@ function authenticate(req: express.Request, res: express.Response, next: express
   (req as any).user = user;
   next();
 }
- 
+
 // Require role editor or admin
 function requireWritePermission(req: express.Request, res: express.Response, next: express.NextFunction) {
   const user = (req as any).user as User;
@@ -530,7 +564,19 @@ function requireWritePermission(req: express.Request, res: express.Response, nex
   }
   next();
 }
- 
+
+// Bloque les comptes restreints à certains clients : ils ne doivent pas pouvoir modifier des
+// données partagées (ex : sous-traitants) qui pourraient impacter en cascade d'autres clients
+// auxquels ils n'ont pas accès.
+function requireUnrestrictedWrite(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = (req as any).user as User;
+  if (hasAnyRestriction(user)) {
+    res.status(403).json({ error: "Votre compte est restreint à certains clients : cette action n'est pas autorisée." });
+    return;
+  }
+  next();
+}
+
 // Require Admin only
 function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
   const user = (req as any).user as User;
@@ -540,9 +586,9 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   }
   next();
 }
- 
+
 // --- Vérifications d'habilitation (mêmes règles que côté interface, mais appliquées côté serveur) ---
- 
+
 // Un utilisateur a-t-il une restriction d'habilitation active (clients et/ou projets limités) ?
 function hasAnyRestriction(user: User): boolean {
   if (user.role === UserRole.ADMIN) return false;
@@ -550,7 +596,7 @@ function hasAnyRestriction(user: User): boolean {
   const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
   return hasProjectLimit || hasClientLimit;
 }
- 
+
 // L'utilisateur a-t-il le droit de voir/modifier ce projet précis ?
 function userCanAccessProject(user: User, project: Project | undefined | null): boolean {
   if (!project) return false;
@@ -562,7 +608,7 @@ function userCanAccessProject(user: User, project: Project | undefined | null): 
   const isClientAllowed = hasClientLimit && user.allowedClientIds!.includes(project.clientId);
   return isProjectAllowed || isClientAllowed;
 }
- 
+
 // L'utilisateur a-t-il le droit de voir/modifier ce client précis ?
 function userCanAccessClient(user: User, clientId: string | undefined | null): boolean {
   if (!clientId) return false;
@@ -571,13 +617,13 @@ function userCanAccessClient(user: User, clientId: string | undefined | null): b
   if (!hasClientLimit) return true;
   return user.allowedClientIds!.includes(clientId);
 }
- 
+
 // Liste des projets accessibles par cet utilisateur (utilisé pour filtrer les listes GET)
 function getAccessibleProjects(user: User): Project[] {
   if (!hasAnyRestriction(user)) return db.projects;
   return db.projects.filter(p => userCanAccessProject(user, p));
 }
- 
+
 // Middleware générique : bloque l'accès à un projet précis si l'utilisateur n'y est pas habilité
 function requireProjectAccess(getProjectId: (req: express.Request) => string | undefined) {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -591,13 +637,13 @@ function requireProjectAccess(getProjectId: (req: express.Request) => string | u
     next();
   };
 }
- 
+
 // --- Protection anti-bruteforce sur la connexion ---
 // Limite le nombre de tentatives de connexion par adresse IP sur une fenêtre glissante.
 const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
 const MAX_LOGIN_ATTEMPTS = 8;
 const LOGIN_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
- 
+
 function checkAndRegisterLoginAttempt(ip: string): boolean {
   const now = Date.now();
   const entry = loginAttempts.get(ip);
@@ -608,13 +654,43 @@ function checkAndRegisterLoginAttempt(ip: string): boolean {
   entry.count += 1;
   return entry.count <= MAX_LOGIN_ATTEMPTS;
 }
- 
+
 function resetLoginAttempts(ip: string): void {
   loginAttempts.delete(ip);
 }
- 
+
+// --- Journal d'audit des actions sensibles ---
+// Conserve une trace de qui a fait quoi (suppressions, changements de droits, mots de passe...).
+// Limité aux 1000 entrées les plus récentes pour éviter une croissance illimitée.
+const MAX_AUDIT_ENTRIES = 1000;
+
+function logAudit(actor: User, action: string, details: string) {
+  try {
+    const entry: AuditLogEntry = {
+      id: "log_" + Math.random().toString(36).substring(2, 9),
+      timestamp: new Date().toISOString(),
+      actorEmail: actor.email,
+      actorNom: actor.nom,
+      action,
+      details
+    };
+    db.auditLog.push(entry);
+    if (db.auditLog.length > MAX_AUDIT_ENTRIES) {
+      db.auditLog = db.auditLog.slice(db.auditLog.length - MAX_AUDIT_ENTRIES);
+    }
+    saveDatabase();
+    if (firestoreDb) {
+      setDoc(doc(firestoreDb, "metadata", "auditLog"), { entries: db.auditLog }).catch((err: any) => {
+        console.error("[Firebase] Erreur de synchronisation du journal d'audit :", err);
+      });
+    }
+  } catch (err) {
+    console.error("Erreur lors de l'écriture du journal d'audit :", err);
+  }
+}
+
 // --- API Endpoints ---
- 
+
 // Auth endpoints
 app.post("/api/auth/register", async (req, res) => {
   const { email, nom, password, requestedRole } = req.body;
@@ -622,12 +698,12 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(400).json({ error: "Veuillez remplir tous les champs obligatoires" });
     return;
   }
- 
+
   if (String(password).length < 8) {
     res.status(400).json({ error: "Le mot de passe doit comporter au moins 8 caractères." });
     return;
   }
- 
+
   // Normalise email
   const normalizedEmail = email.trim().toLowerCase();
   
@@ -635,7 +711,7 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(400).json({ error: "Cette adresse email est déjà enregistrée" });
     return;
   }
- 
+
   try {
     // Default approvals logic
     // Automatically approve thomas.jezequel@emg.bzh as ADMIN
@@ -650,11 +726,11 @@ app.post("/api/auth/register", async (req, res) => {
       createdAt: new Date().toISOString(),
       passwordHash: hashedPassword
     };
- 
+
     db.users.push(newUser);
     saveDatabase();
     syncToFirestore("users", newUser.id, newUser);
- 
+
     res.json({
       message: isAdmin 
         ? "Compte administrateur créé et approuvé automatiquement !"
@@ -672,28 +748,28 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(500).json({ error: "Erreur serveur lors de l'inscription." });
   }
 });
- 
+
 app.post("/api/auth/login", async (req, res) => {
   const clientIp = req.ip || req.socket.remoteAddress || "unknown";
   if (!checkAndRegisterLoginAttempt(clientIp)) {
     res.status(429).json({ error: "Trop de tentatives de connexion. Veuillez réessayer dans quelques minutes." });
     return;
   }
- 
+
   const { email, password } = req.body;
   if (!email || !password) {
     res.status(400).json({ error: "Veuillez entrer une adresse email et un mot de passe" });
     return;
   }
- 
+
   const normalizedEmail = email.trim().toLowerCase();
   const user = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
- 
+
   if (!user) {
     res.status(400).json({ error: "Identifiant ou mot de passe incorrect" });
     return;
   }
- 
+
   try {
     // Les mots de passe chiffrés (bcrypt) commencent toujours par "$2".
     // Compatibilité : si un ancien mot de passe en clair est détecté, on le chiffre
@@ -702,12 +778,12 @@ app.post("/api/auth/login", async (req, res) => {
     const passwordMatches = isHashed
       ? await bcrypt.compare(password, user.passwordHash)
       : password === user.passwordHash;
- 
+
     if (!passwordMatches) {
       res.status(400).json({ error: "Identifiant ou mot de passe incorrect" });
       return;
     }
- 
+
     if (!isHashed) {
       user.passwordHash = await bcrypt.hash(password, 10);
       saveDatabase();
@@ -718,17 +794,17 @@ app.post("/api/auth/login", async (req, res) => {
     res.status(500).json({ error: "Erreur serveur lors de la connexion." });
     return;
   }
- 
+
   if (user.status === UserStatus.PENDING) {
     res.status(403).json({ error: "Votre compte de membre (" + user.role + ") est en attente d'approbation par thomas.jezequel@emg.bzh." });
     return;
   }
- 
+
   if (user.status === UserStatus.SUSPENDED) {
     res.status(403).json({ error: "Votre compte a été suspendu par un administrateur." });
     return;
   }
- 
+
   const token = generateToken(user.id);
   resetLoginAttempts(clientIp);
   res.json({
@@ -746,7 +822,7 @@ app.post("/api/auth/login", async (req, res) => {
     }
   });
 });
- 
+
 app.get("/api/auth/me", authenticate, (req, res) => {
   const user = (req as any).user;
   res.json({
@@ -763,14 +839,14 @@ app.get("/api/auth/me", authenticate, (req, res) => {
     }
   });
 });
- 
+
 // --- User administration (Admin Only) ---
 app.get("/api/users", authenticate, requireAdmin, (req, res) => {
   // Map users without passwordHash
   const list = db.users.map(({ passwordHash, ...user }) => user);
   res.json(list);
 });
- 
+
 app.put("/api/users/:id", authenticate, requireAdmin, (req, res) => {
   const { id } = req.params;
   const { status, role, allowedProjectIds, poste, allowedClientIds, nom } = req.body;
@@ -780,26 +856,39 @@ app.put("/api/users/:id", authenticate, requireAdmin, (req, res) => {
     res.status(404).json({ error: "Utilisateur non trouvé" });
     return;
   }
- 
+
   // Prevent self suspension or role change
   const currentAdmin = (req as any).user as User;
   if (user.email === currentAdmin.email && (status !== undefined || role !== undefined)) {
     res.status(400).json({ error: "Vous ne pouvez pas modifier le statut ou le rôle de votre propre compte administrateur" });
     return;
   }
- 
+
+  const previousStatus = user.status;
+  const previousRole = user.role;
+
   if (status !== undefined) user.status = status;
   if (role !== undefined) user.role = role;
   if (allowedProjectIds !== undefined) user.allowedProjectIds = allowedProjectIds;
   if (allowedClientIds !== undefined) user.allowedClientIds = allowedClientIds;
   if (poste !== undefined) user.poste = poste;
   if (nom !== undefined) user.nom = nom;
- 
+
+  if (status !== undefined && status !== previousStatus) {
+    logAudit(currentAdmin, "Changement de statut utilisateur", `${user.email} : ${previousStatus} → ${status}`);
+  }
+  if (role !== undefined && role !== previousRole) {
+    logAudit(currentAdmin, "Changement de rôle utilisateur", `${user.email} : ${previousRole} → ${role}`);
+  }
+  if (allowedClientIds !== undefined || allowedProjectIds !== undefined) {
+    logAudit(currentAdmin, "Modification des habilitations", `${user.email} : clients=[${(allowedClientIds || []).join(", ")}] projets=[${(allowedProjectIds || []).join(", ")}]`);
+  }
+
   saveDatabase();
   syncToFirestore("users", user.id, user);
   res.json(user);
 });
- 
+
 app.delete("/api/users/:id", authenticate, requireAdmin, (req, res) => {
   const { id } = req.params;
   const index = db.users.findIndex(u => u.id === id);
@@ -808,21 +897,22 @@ app.delete("/api/users/:id", authenticate, requireAdmin, (req, res) => {
     res.status(404).json({ error: "Utilisateur non trouvé" });
     return;
   }
- 
+
   const user = db.users[index];
   const currentAdmin = (req as any).user as User;
   if (user.email === currentAdmin.email) {
     res.status(400).json({ error: "Vous ne pouvez pas supprimer votre propre compte" });
     return;
   }
- 
+
   db.users.splice(index, 1);
   saveDatabase();
   deleteFromFirestore("users", id);
+  logAudit(currentAdmin, "Suppression d'utilisateur", `${user.email} (${user.nom})`);
   res.json({ success: true, message: "Utilisateur supprimé" });
 });
- 
- 
+
+
 // --- CLIENTS API (CRUD) ---
 app.get("/api/clients", authenticate, (req, res) => {
   const user = (req as any).user as User;
@@ -833,7 +923,7 @@ app.get("/api/clients", authenticate, (req, res) => {
   }
   res.json(db.clients.filter(c => user.allowedClientIds!.includes(c.id)));
 });
- 
+
 app.post("/api/clients", authenticate, requireWritePermission, (req, res) => {
   const { nom, adresse, coutHoraireMO, fraisGenerauxPct } = req.body;
   if (!nom) {
@@ -853,7 +943,7 @@ app.post("/api/clients", authenticate, requireWritePermission, (req, res) => {
   syncToFirestore("clients", newClient.id, newClient);
   res.json(newClient);
 });
- 
+
 app.put("/api/clients/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const user = (req as any).user as User;
@@ -871,12 +961,12 @@ app.put("/api/clients/:id", authenticate, requireWritePermission, (req, res) => 
   if (adresse !== undefined) client.adresse = adresse;
   if (coutHoraireMO !== undefined) client.coutHoraireMO = Number(coutHoraireMO);
   if (fraisGenerauxPct !== undefined) client.fraisGenerauxPct = Number(fraisGenerauxPct);
- 
+
   saveDatabase();
   syncToFirestore("clients", client.id, client);
   res.json(client);
 });
- 
+
 app.delete("/api/clients/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const user = (req as any).user as User;
@@ -889,24 +979,25 @@ app.delete("/api/clients/:id", authenticate, requireWritePermission, (req, res) 
     res.status(404).json({ error: "Client introuvable" });
     return;
   }
- 
+  const clientName = db.clients[index].nom;
+
   // Cascade delete logic: Find all projects for this client
   const clientProjects = db.projects.filter(p => p.clientId === id);
   const projectIds = clientProjects.map(p => p.id);
- 
+
   // Remove matching projects, budgets, realises, and billings
   const budgetsToDelete = db.budgets.filter(b => projectIds.includes(b.projetId));
   const realisesToDelete = db.realises.filter(r => projectIds.includes(r.projetId));
   const billingsToDelete = db.billings.filter(b => projectIds.includes(b.projetId) || b.projetIds?.some(pid => projectIds.includes(pid)));
- 
+
   db.projects = db.projects.filter(p => p.clientId !== id);
   db.budgets = db.budgets.filter(b => !projectIds.includes(b.projetId));
   db.realises = db.realises.filter(r => !projectIds.includes(r.projetId));
   db.billings = db.billings.filter(b => !projectIds.includes(b.projetId) && !b.projetIds?.some(pid => projectIds.includes(pid)));
- 
+
   db.clients.splice(index, 1);
   saveDatabase();
- 
+
   // Firestore sync deletes
   deleteFromFirestore("clients", id);
   for (const pid of projectIds) {
@@ -921,17 +1012,18 @@ app.delete("/api/clients/:id", authenticate, requireWritePermission, (req, res) 
   for (const b of billingsToDelete) {
     deleteFromFirestore("billings", b.id);
   }
- 
+
+  logAudit(user, "Suppression de client", `${clientName} (et ${projectIds.length} affaires associées)`);
   res.json({ success: true, message: `Client et ${projectIds.length} projets associés ont été supprimés.` });
 });
- 
- 
+
+
 // --- SUBCONTRACTORS API (CRUD) ---
 app.get("/api/subcontractors", authenticate, (req, res) => {
   res.json(db.subcontractors);
 });
- 
-app.post("/api/subcontractors", authenticate, requireWritePermission, (req, res) => {
+
+app.post("/api/subcontractors", authenticate, requireWritePermission, requireUnrestrictedWrite, (req, res) => {
   const { nom, adresse, coutHoraireMO, fraisGenerauxPct, estExterieur } = req.body;
   if (!nom) {
     res.status(400).json({ error: "Le nom du sous-traitant est requis" });
@@ -951,8 +1043,8 @@ app.post("/api/subcontractors", authenticate, requireWritePermission, (req, res)
   syncToFirestore("subcontractors", newSub.id, newSub);
   res.json(newSub);
 });
- 
-app.put("/api/subcontractors/:id", authenticate, requireWritePermission, (req, res) => {
+
+app.put("/api/subcontractors/:id", authenticate, requireWritePermission, requireUnrestrictedWrite, (req, res) => {
   const { id } = req.params;
   const { nom, adresse, coutHoraireMO, fraisGenerauxPct, estExterieur } = req.body;
   const sub = db.subcontractors.find(s => s.id === id);
@@ -965,37 +1057,39 @@ app.put("/api/subcontractors/:id", authenticate, requireWritePermission, (req, r
   if (coutHoraireMO !== undefined) sub.coutHoraireMO = Number(coutHoraireMO);
   if (fraisGenerauxPct !== undefined) sub.fraisGenerauxPct = Number(fraisGenerauxPct);
   if (estExterieur !== undefined) (sub as any).estExterieur = !!estExterieur;
- 
+
   saveDatabase();
   syncToFirestore("subcontractors", sub.id, sub);
   res.json(sub);
 });
- 
-app.delete("/api/subcontractors/:id", authenticate, requireWritePermission, (req, res) => {
+
+app.delete("/api/subcontractors/:id", authenticate, requireWritePermission, requireUnrestrictedWrite, (req, res) => {
   const { id } = req.params;
+  const subDeleteUser = (req as any).user as User;
   const index = db.subcontractors.findIndex(s => s.id === id);
   if (index === -1) {
     res.status(404).json({ error: "Sous-traitant introuvable" });
     return;
   }
- 
+  const subName = db.subcontractors[index].nom;
+
   // Cascade delete logic: Find all projects for this subcontractor
   const subProjects = db.projects.filter(p => p.sousTraitantId === id);
   const projectIds = subProjects.map(p => p.id);
- 
+
   // Remove matching projects, budgets, realises, and billings
   const budgetsToDelete = db.budgets.filter(b => projectIds.includes(b.projetId));
   const realisesToDelete = db.realises.filter(r => projectIds.includes(r.projetId));
   const billingsToDelete = db.billings.filter(b => projectIds.includes(b.projetId) || b.projetIds?.some(pid => projectIds.includes(pid)));
- 
+
   db.projects = db.projects.filter(p => p.sousTraitantId !== id);
   db.budgets = db.budgets.filter(b => !projectIds.includes(b.projetId));
   db.realises = db.realises.filter(r => !projectIds.includes(r.projetId));
   db.billings = db.billings.filter(b => !projectIds.includes(b.projetId) && !b.projetIds?.some(pid => projectIds.includes(pid)));
- 
+
   db.subcontractors.splice(index, 1);
   saveDatabase();
- 
+
   // Firestore sync deletes
   deleteFromFirestore("subcontractors", id);
   for (const pid of projectIds) {
@@ -1010,30 +1104,31 @@ app.delete("/api/subcontractors/:id", authenticate, requireWritePermission, (req
   for (const b of billingsToDelete) {
     deleteFromFirestore("billings", b.id);
   }
- 
+
+  logAudit(subDeleteUser, "Suppression de sous-traitant", `${subName} (et ${projectIds.length} affaires associées)`);
   res.json({ success: true, message: `Sous-traitant et ${projectIds.length} projets associés ont été supprimés.` });
 });
- 
- 
+
+
 // --- PROJECTS API (CRUD) ---
 app.get("/api/projects", authenticate, (req, res) => {
   const user = (req as any).user as User;
   res.json(getAccessibleProjects(user));
 });
- 
+
 app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
   const data = req.body;
   if (!data.nomAffaire || !data.nomZone || !data.clientId || !data.sousTraitantId) {
     res.status(400).json({ error: "Veuillez renseigner le nom d'affaire, la zone, le client et le sous-traitant." });
     return;
   }
- 
+
   const user = (req as any).user as User;
   if (!userCanAccessClient(user, data.clientId)) {
     res.status(403).json({ error: "Vous n'êtes pas habilité à créer une affaire pour ce client." });
     return;
   }
- 
+
   const pPRS = data.poidsPRS ? Number(data.poidsPRS) : undefined;
   const pPDC = data.poidsPDC ? Number(data.poidsPDC) : undefined;
   
@@ -1044,7 +1139,7 @@ app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
   } else {
     computedPoidsTotal = Number(data.poidsTotal) || 0;
   }
- 
+
   const newProject: Project = {
     id: "p_" + Math.random().toString(36).substring(2, 9),
     nomAffaire: data.nomAffaire,
@@ -1070,9 +1165,9 @@ app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
     checklistClient: data.checklistClient || {},
     checklistSubcontractor: data.checklistSubcontractor || {}
   };
- 
+
   db.projects.push(newProject);
- 
+
   // Automatically create empty budgets and realizes records to align database constraints elegantly
   const newBudget: Budget = {
     id: "b_" + Math.random().toString(36).substring(2, 9),
@@ -1092,17 +1187,17 @@ app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
     achatsSousTraitanceRealise: 0,
     fraisGenerauxPct: 10
   };
- 
+
   db.budgets.push(newBudget);
   db.realises.push(newRealise);
- 
+
   saveDatabase();
   syncToFirestore("projects", newProject.id, newProject);
   syncToFirestore("budgets", newBudget.id, newBudget);
   syncToFirestore("realises", newRealise.id, newRealise);
   res.json(newProject);
 });
- 
+
 app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const data = req.body;
@@ -1120,7 +1215,7 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
     res.status(403).json({ error: "Vous n'êtes pas habilité à attribuer cette affaire à ce client." });
     return;
   }
- 
+
   // Update all fields selectively
   if (data.nomAffaire !== undefined) project.nomAffaire = data.nomAffaire;
   if (data.nomZone !== undefined) project.nomZone = data.nomZone;
@@ -1132,14 +1227,14 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
   if (data.poidsPRS !== undefined) project.poidsPRS = data.poidsPRS === "" ? undefined : Number(data.poidsPRS);
   if (data.poidsPDC !== undefined) project.poidsPDC = data.poidsPDC === "" ? undefined : Number(data.poidsPDC);
   if (data.quantiteMl !== undefined) project.quantiteMl = data.quantiteMl === "" ? undefined : Number(data.quantiteMl);
- 
+
   // Auto recompute poids total
   if (project.poidsPRS !== undefined || project.poidsPDC !== undefined) {
     project.poidsTotal = (project.poidsPDC || 0) + (project.poidsPRS || 0);
   } else if (data.poidsTotal !== undefined) {
     project.poidsTotal = Number(data.poidsTotal) || 0;
   }
- 
+
   if (data.protection !== undefined) project.protection = data.protection;
   if (data.dessinateur !== undefined) project.dessinateur = data.dessinateur;
   if (data.conducteurTravaux !== undefined) project.conducteurTravaux = data.conducteurTravaux;
@@ -1151,13 +1246,13 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
   if (data.remarquesPrestation !== undefined) project.remarquesPrestation = data.remarquesPrestation;
   if (data.checklistClient !== undefined) project.checklistClient = data.checklistClient;
   if (data.checklistSubcontractor !== undefined) project.checklistSubcontractor = data.checklistSubcontractor;
- 
+
   // Sync Poids Total to Budget sold weight if budget exists and was identical
   const budget = db.budgets.find(b => b.projetId === project.id);
   if (budget) {
     budget.poidsVendu = project.poidsTotal;
   }
- 
+
   saveDatabase();
   syncToFirestore("projects", project.id, project);
   if (budget) {
@@ -1165,7 +1260,7 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
   }
   res.json(project);
 });
- 
+
 app.delete("/api/projects/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const user = (req as any).user as User;
@@ -1183,19 +1278,19 @@ app.delete("/api/projects/:id", authenticate, requireWritePermission, (req, res)
     res.status(404).json({ error: "Projet introuvable" });
     return;
   }
- 
+
   // Clean cascading relations
   const budgetsToDelete = db.budgets.filter(b => b.projetId === id);
   const realisesToDelete = db.realises.filter(r => r.projetId === id);
   const billingsToDelete = db.billings.filter(b => b.projetId === id);
- 
+
   db.projects.splice(index, 1);
   db.budgets = db.budgets.filter(b => b.projetId !== id);
   db.realises = db.realises.filter(r => r.projetId !== id);
   db.billings = db.billings.filter(b => b.projetId !== id);
- 
+
   saveDatabase();
- 
+
   deleteFromFirestore("projects", id);
   for (const b of budgetsToDelete) {
     deleteFromFirestore("budgets", b.id);
@@ -1206,11 +1301,12 @@ app.delete("/api/projects/:id", authenticate, requireWritePermission, (req, res)
   for (const b of billingsToDelete) {
     deleteFromFirestore("billings", b.id);
   }
- 
+
+  logAudit(user, "Suppression d'affaire", `${projectToDelete.nomAffaire} - ${projectToDelete.nomZone}`);
   res.json({ success: true });
 });
- 
- 
+
+
 // --- BUDGETS API (CRUD) ---
 app.get("/api/budgets", authenticate, (req, res) => {
   const user = (req as any).user as User;
@@ -1221,7 +1317,7 @@ app.get("/api/budgets", authenticate, (req, res) => {
   const accessibleIds = new Set(getAccessibleProjects(user).map(p => p.id));
   res.json(db.budgets.filter(b => accessibleIds.has(b.projetId)));
 });
- 
+
 app.put("/api/budgets/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const { 
@@ -1248,7 +1344,7 @@ app.put("/api/budgets/:id", authenticate, requireWritePermission, (req, res) => 
     res.status(403).json({ error: "Vous n'êtes pas habilité à modifier le budget de cette affaire." });
     return;
   }
- 
+
   if (poidsVendu !== undefined) budget.poidsVendu = Number(poidsVendu) || 0;
   if (budgetFourniture !== undefined) budget.budgetFourniture = Number(budgetFourniture) || 0;
   if (budgetMainOeuvre !== undefined) budget.budgetMainOeuvre = Number(budgetMainOeuvre) || 0;
@@ -1261,13 +1357,13 @@ app.put("/api/budgets/:id", authenticate, requireWritePermission, (req, res) => 
   if (budgetTransport !== undefined) budget.budgetTransport = Number(budgetTransport) || 0;
   if (budgetProtection !== undefined) budget.budgetProtection = Number(budgetProtection) || 0;
   if (budgetHeuresMO !== undefined) budget.budgetHeuresMO = Number(budgetHeuresMO) || 0;
- 
+
   saveDatabase();
   syncToFirestore("budgets", budget.id, budget);
   res.json(budget);
 });
- 
- 
+
+
 // --- REALISED (REALIŞÉ) API (CRUD) ---
 app.get("/api/realises", authenticate, (req, res) => {
   const user = (req as any).user as User;
@@ -1278,7 +1374,7 @@ app.get("/api/realises", authenticate, (req, res) => {
   const accessibleIds = new Set(getAccessibleProjects(user).map(p => p.id));
   res.json(db.realises.filter(r => accessibleIds.has(r.projetId)));
 });
- 
+
 app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const { 
@@ -1307,7 +1403,7 @@ app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) =>
     res.status(403).json({ error: "Vous n'êtes pas habilité à modifier le réalisé de cette affaire." });
     return;
   }
- 
+
   if (poidsFabrique !== undefined) realise.poidsFabrique = Number(poidsFabrique) || 0;
   if (achatsFournitureRealise !== undefined) realise.achatsFournitureRealise = Number(achatsFournitureRealise) || 0;
   if (achatsMainOeuvreRealise !== undefined) realise.achatsMainOeuvreRealise = Number(achatsMainOeuvreRealise) || 0;
@@ -1322,13 +1418,13 @@ app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) =>
   if (achatsHeuresMO !== undefined) realise.achatsHeuresMO = Number(achatsHeuresMO) || 0;
   if (poidsUtilise !== undefined) realise.poidsUtilise = Number(poidsUtilise) || 0;
   if (poidsSousTraite !== undefined) realise.poidsSousTraite = Number(poidsSousTraite) || 0;
- 
+
   saveDatabase();
   syncToFirestore("realises", realise.id, realise);
   res.json(realise);
 });
- 
- 
+
+
 // --- BILLINGS API (CRUD) ---
 app.get("/api/billings", authenticate, (req, res) => {
   const user = (req as any).user as User;
@@ -1339,7 +1435,7 @@ app.get("/api/billings", authenticate, (req, res) => {
   const accessibleIds = new Set(getAccessibleProjects(user).map(p => p.id));
   res.json(db.billings.filter(b => accessibleIds.has(b.projetId) || b.projetIds?.some(id => accessibleIds.has(id))));
 });
- 
+
 app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
   const { 
     projetId, 
@@ -1353,12 +1449,12 @@ app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
     dateEcheance,
     factureRecue
   } = req.body;
- 
+
   if (!projetId || !typePrestation) {
     res.status(400).json({ error: "Veuillez spécifier le projet et le type de prestation" });
     return;
   }
- 
+
   const userBilling = (req as any).user as User;
   const allLinkedIds = [projetId, ...(Array.isArray(projetIds) ? projetIds : [])];
   const hasAccessToAll = allLinkedIds.every(pid => userCanAccessProject(userBilling, db.projects.find(p => p.id === pid)));
@@ -1366,7 +1462,7 @@ app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
     res.status(403).json({ error: "Vous n'êtes pas habilité à facturer une ou plusieurs des affaires sélectionnées." });
     return;
   }
- 
+
   const newBilling: Billing = {
     id: "bil_" + Math.random().toString(36).substring(2, 9),
     projetId,
@@ -1382,9 +1478,9 @@ app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
     commentaire: req.body.commentaire || "",
     createdAt: new Date().toISOString()
   };
- 
+
   db.billings.push(newBilling);
- 
+
   // If billing is marked as PAYEE, automatically mark associated projects as Terminée
   const updatedProjects: Project[] = [];
   if (newBilling.etatFacturation === BillingStatus.PAYEE) {
@@ -1396,7 +1492,7 @@ app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
       }
     });
   }
- 
+
   saveDatabase();
   syncToFirestore("billings", newBilling.id, newBilling);
   for (const p of updatedProjects) {
@@ -1404,7 +1500,7 @@ app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
   }
   res.json(newBilling);
 });
- 
+
 app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const data = req.body;
@@ -1431,7 +1527,7 @@ app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) =>
       return;
     }
   }
- 
+
   if (data.projetId !== undefined) billing.projetId = data.projetId;
   if (data.projetIds !== undefined) billing.projetIds = Array.isArray(data.projetIds) ? data.projetIds : [];
   if (data.typePrestation !== undefined) billing.typePrestation = data.typePrestation;
@@ -1443,7 +1539,7 @@ app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) =>
   if (data.dateEcheance !== undefined) billing.dateEcheance = data.dateEcheance;
   if (data.factureRecue !== undefined) billing.factureRecue = !!data.factureRecue;
   if (data.commentaire !== undefined) billing.commentaire = data.commentaire;
- 
+
   // If billing is marked as PAYEE, automatically mark associated projects as Terminée
   const updatedProjects: Project[] = [];
   if (billing.etatFacturation === BillingStatus.PAYEE) {
@@ -1455,7 +1551,7 @@ app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) =>
       }
     });
   }
- 
+
   saveDatabase();
   syncToFirestore("billings", billing.id, billing);
   for (const p of updatedProjects) {
@@ -1463,7 +1559,7 @@ app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) =>
   }
   res.json(billing);
 });
- 
+
 app.delete("/api/billings/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const userBillingDelete = (req as any).user as User;
@@ -1488,13 +1584,13 @@ app.delete("/api/billings/:id", authenticate, requireWritePermission, (req, res)
   deleteFromFirestore("billings", id);
   res.json({ success: true });
 });
- 
- 
+
+
 // --- TYPES D'OUVRAGE API (Admin Managed) ---
 app.get("/api/types-ouvrage", authenticate, (req, res) => {
   res.json(db.typesOuvrage || []);
 });
- 
+
 app.post("/api/types-ouvrage", authenticate, requireAdmin, (req, res) => {
   const { name } = req.body;
   if (!name || !name.trim()) {
@@ -1514,7 +1610,7 @@ app.post("/api/types-ouvrage", authenticate, requireAdmin, (req, res) => {
   syncToFirestore("metadata", "global", { typesOuvrage: db.typesOuvrage });
   res.json({ success: true, list: db.typesOuvrage });
 });
- 
+
 app.delete("/api/types-ouvrage/:name", authenticate, requireAdmin, (req, res) => {
   const { name } = req.params;
   if (!name) {
@@ -1534,7 +1630,7 @@ app.delete("/api/types-ouvrage/:name", authenticate, requireAdmin, (req, res) =>
   syncToFirestore("metadata", "global", { typesOuvrage: db.typesOuvrage });
   res.json({ success: true, list: db.typesOuvrage });
 });
- 
+
 // --- CHANGE PASSWORD API ---
 app.put("/api/auth/change-password", authenticate, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
@@ -1552,33 +1648,43 @@ app.put("/api/auth/change-password", authenticate, async (req, res) => {
     res.status(404).json({ error: "Utilisateur non trouvé" });
     return;
   }
- 
+
   try {
     const isHashed = foundUser.passwordHash.startsWith("$2");
     const currentMatches = isHashed
       ? await bcrypt.compare(currentPassword, foundUser.passwordHash)
       : currentPassword === foundUser.passwordHash;
- 
+
     if (!currentMatches) {
       res.status(400).json({ error: "L'ancien mot de passe est incorrect." });
       return;
     }
- 
+
     foundUser.passwordHash = await bcrypt.hash(newPassword, 10);
     saveDatabase();
     syncToFirestore("users", foundUser.id, foundUser);
+    logAudit(foundUser, "Changement de mot de passe", `${foundUser.email} a modifié son mot de passe`);
     res.json({ success: true, message: "Votre mot de passe a été modifié avec succès !" });
   } catch (err) {
     console.error("Erreur lors du changement de mot de passe :", err);
     res.status(500).json({ error: "Erreur serveur lors du changement de mot de passe." });
   }
 });
- 
- 
+
+
+// --- AUDIT LOG API (Admin Only) ---
+// Consultation du journal des actions sensibles (suppressions, changements de droits, mots de passe...).
+app.get("/api/audit-log", authenticate, requireAdmin, (req, res) => {
+  // Retourne les entrées les plus récentes en premier
+  const sorted = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  res.json(sorted);
+});
+
+
 async function startListening() {
   // Pre-load or seed Database from Google Cloud Firestore
   await loadDatabaseFromFirestore();
- 
+
   // Handle assets or static builds in production
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -1595,12 +1701,12 @@ async function startListening() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
- 
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`[FlowFab Server] initialized. Running on port ${PORT}`);
   });
 }
- 
+
 startListening().catch((err) => {
   console.error("Erreur au redémarrage serveur:", err);
 });
