@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import { createServer as createViteServer } from "vite";
 import { 
   User, 
@@ -19,8 +21,25 @@ import {
 } from "./src/types.js";
  
 const app = express();
+app.set("trust proxy", 1); // Nécessaire derrière le proxy Railway pour obtenir la vraie IP du visiteur
 const PORT = 3000;
 const DB_FILE = path.join(process.cwd(), "db.json");
+ 
+// Clé secrète utilisée pour signer les jetons de connexion (JWT-like).
+// IMPORTANT : configurez la variable d'environnement JWT_SECRET sur Railway en production.
+// Sans elle, un secret aléatoire est généré à chaque démarrage, ce qui déconnecte tout le monde au redémarrage du serveur.
+const JWT_SECRET: string = process.env.JWT_SECRET || (() => {
+  console.warn("⚠️  ATTENTION SÉCURITÉ : la variable d'environnement JWT_SECRET n'est pas définie. Un secret temporaire aléatoire est utilisé pour cette session serveur. Configurez JWT_SECRET dans les variables d'environnement Railway pour la production.");
+  return crypto.randomBytes(32).toString("hex");
+})();
+ 
+// Mot de passe initial du compte administrateur (utilisé uniquement lors de la toute première création de la base).
+// IMPORTANT : configurez ADMIN_SEED_PASSWORD dans les variables d'environnement, puis changez ce mot de passe
+// depuis l'application (onglet Profil) dès la première connexion.
+const ADMIN_SEED_PASSWORD: string = process.env.ADMIN_SEED_PASSWORD || (() => {
+  console.warn("⚠️  ATTENTION SÉCURITÉ : ADMIN_SEED_PASSWORD n'est pas défini. Un mot de passe temporaire aléatoire a été généré pour l'amorçage initial — configurez cette variable d'environnement et changez le mot de passe admin via l'application au plus vite.");
+  return "Temp_" + crypto.randomBytes(6).toString("hex");
+})();
  
 // Middleware to parse JSON
 app.use(cors({
@@ -52,7 +71,7 @@ const DEFAULT_DB: DatabaseSchema = {
       status: UserStatus.APPROVED,
       poste: "Conducteur principal",
       createdAt: new Date().toISOString(),
-      passwordHash: "emg2026" // Simple text comparison for secure prototype
+      passwordHash: ADMIN_SEED_PASSWORD // Variable d'environnement (jamais en clair dans le code)
     },
     {
       id: "user-demande",
@@ -62,7 +81,7 @@ const DEFAULT_DB: DatabaseSchema = {
       status: UserStatus.PENDING,
       poste: "Dessinateur projeteur",
       createdAt: new Date().toISOString(),
-      passwordHash: "collab"
+      passwordHash: "Demo_" + crypto.randomBytes(4).toString("hex") // Compte de démo en attente, mot de passe non communiqué
     }
   ],
   typesOuvrage: ["Passerelle", "Bâtiment industriel", "Charpente de bureaux", "Serrurerie", "Pylône", "Ouvrage d'art"],
@@ -428,22 +447,47 @@ loadDatabase();
  
  
 // --- Auth Utilities ---
-// Custom simple JWT token signature for our FlowFab application (Base64 encoding containing user ID and Timestamp)
-function generateToken(userId: string): string {
-  const payload = JSON.stringify({ userId, expires: Date.now() + 24 * 60 * 60 * 1000 });
-  return Buffer.from(payload).toString("base64");
+ 
+// Encodage base64url (sans caractères réservés des URLs, sans padding)
+function base64url(input: Buffer | string): string {
+  return Buffer.from(input).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
  
-function parseToken(token: string): { userId: string } | null {
+function base64urlDecode(input: string): Buffer {
+  const padded = input.replace(/-/g, "+").replace(/_/g, "/");
+  return Buffer.from(padded, "base64");
+}
+ 
+// Jeton de connexion signé (type JWT) : impossible à falsifier sans connaître JWT_SECRET.
+// Toute modification du contenu (userId, expiration) invalide automatiquement la signature.
+function generateToken(userId: string): string {
+  const payload = { userId, expires: Date.now() + 24 * 60 * 60 * 1000 };
+  const payloadStr = base64url(JSON.stringify(payload));
+  const signature = base64url(crypto.createHmac("sha256", JWT_SECRET).update(payloadStr).digest());
+  return `${payloadStr}.${signature}`;
+}
+ 
+function parseToken(token: string): { userId: string; expires: number } | null {
   try {
-    const payload = JSON.parse(Buffer.from(token, "base64").toString("utf-8"));
-    if (payload && payload.userId) {
-      return payload;
+    const parts = token.split(".");
+    if (parts.length !== 2) return null;
+    const [payloadStr, signature] = parts;
+ 
+    const expectedSignature = base64url(crypto.createHmac("sha256", JWT_SECRET).update(payloadStr).digest());
+ 
+    // Comparaison à temps constant pour éviter les attaques par mesure de timing
+    const sigBuf = Buffer.from(signature);
+    const expectedBuf = Buffer.from(expectedSignature);
+    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+      return null;
     }
+ 
+    const payload = JSON.parse(base64urlDecode(payloadStr).toString("utf-8"));
+    if (!payload || !payload.userId || !payload.expires) return null;
+    return payload;
   } catch {
-    // Return null if decoding invalid base64 fails
+    return null;
   }
-  return null;
 }
  
 // Authentication Middleware
@@ -457,6 +501,10 @@ function authenticate(req: express.Request, res: express.Response, next: express
   const parsed = parseToken(token);
   if (!parsed) {
     res.status(401).json({ error: "Session expirée ou invalide" });
+    return;
+  }
+  if (parsed.expires < Date.now()) {
+    res.status(401).json({ error: "Votre session a expiré, veuillez vous reconnecter." });
     return;
   }
   const user = db.users.find((u) => u.id === parsed.userId);
@@ -493,13 +541,90 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   next();
 }
  
+// --- Vérifications d'habilitation (mêmes règles que côté interface, mais appliquées côté serveur) ---
+ 
+// Un utilisateur a-t-il une restriction d'habilitation active (clients et/ou projets limités) ?
+function hasAnyRestriction(user: User): boolean {
+  if (user.role === UserRole.ADMIN) return false;
+  const hasProjectLimit = Array.isArray(user.allowedProjectIds) && user.allowedProjectIds.length > 0;
+  const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+  return hasProjectLimit || hasClientLimit;
+}
+ 
+// L'utilisateur a-t-il le droit de voir/modifier ce projet précis ?
+function userCanAccessProject(user: User, project: Project | undefined | null): boolean {
+  if (!project) return false;
+  if (user.role === UserRole.ADMIN) return true;
+  if (!hasAnyRestriction(user)) return true;
+  const hasProjectLimit = Array.isArray(user.allowedProjectIds) && user.allowedProjectIds.length > 0;
+  const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+  const isProjectAllowed = hasProjectLimit && user.allowedProjectIds!.includes(project.id);
+  const isClientAllowed = hasClientLimit && user.allowedClientIds!.includes(project.clientId);
+  return isProjectAllowed || isClientAllowed;
+}
+ 
+// L'utilisateur a-t-il le droit de voir/modifier ce client précis ?
+function userCanAccessClient(user: User, clientId: string | undefined | null): boolean {
+  if (!clientId) return false;
+  if (user.role === UserRole.ADMIN) return true;
+  const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+  if (!hasClientLimit) return true;
+  return user.allowedClientIds!.includes(clientId);
+}
+ 
+// Liste des projets accessibles par cet utilisateur (utilisé pour filtrer les listes GET)
+function getAccessibleProjects(user: User): Project[] {
+  if (!hasAnyRestriction(user)) return db.projects;
+  return db.projects.filter(p => userCanAccessProject(user, p));
+}
+ 
+// Middleware générique : bloque l'accès à un projet précis si l'utilisateur n'y est pas habilité
+function requireProjectAccess(getProjectId: (req: express.Request) => string | undefined) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const user = (req as any).user as User;
+    const projectId = getProjectId(req);
+    const project = db.projects.find(p => p.id === projectId);
+    if (!userCanAccessProject(user, project)) {
+      res.status(403).json({ error: "Vous n'êtes pas habilité à accéder à cette affaire." });
+      return;
+    }
+    next();
+  };
+}
+ 
+// --- Protection anti-bruteforce sur la connexion ---
+// Limite le nombre de tentatives de connexion par adresse IP sur une fenêtre glissante.
+const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
+const MAX_LOGIN_ATTEMPTS = 8;
+const LOGIN_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+ 
+function checkAndRegisterLoginAttempt(ip: string): boolean {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now - entry.firstAttempt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(ip, { count: 1, firstAttempt: now });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= MAX_LOGIN_ATTEMPTS;
+}
+ 
+function resetLoginAttempts(ip: string): void {
+  loginAttempts.delete(ip);
+}
+ 
 // --- API Endpoints ---
  
 // Auth endpoints
-app.post("/api/auth/register", (req, res) => {
+app.post("/api/auth/register", async (req, res) => {
   const { email, nom, password, requestedRole } = req.body;
   if (!email || !nom || !password) {
     res.status(400).json({ error: "Veuillez remplir tous les champs obligatoires" });
+    return;
+  }
+ 
+  if (String(password).length < 8) {
+    res.status(400).json({ error: "Le mot de passe doit comporter au moins 8 caractères." });
     return;
   }
  
@@ -511,38 +636,50 @@ app.post("/api/auth/register", (req, res) => {
     return;
   }
  
-  // Default approvals logic
-  // Automatically approve thomas.jezequel@emg.bzh as ADMIN
-  const isAdmin = normalizedEmail === "thomas.jezequel@emg.bzh";
-  const newUser: User & { passwordHash: string } = {
-    id: "u_" + Math.random().toString(36).substring(2, 9),
-    email: normalizedEmail,
-    nom: nom.trim(),
-    role: isAdmin ? UserRole.ADMIN : (requestedRole || UserRole.LECTEUR),
-    status: isAdmin ? UserStatus.APPROVED : UserStatus.PENDING,
-    createdAt: new Date().toISOString(),
-    passwordHash: password
-  };
+  try {
+    // Default approvals logic
+    // Automatically approve thomas.jezequel@emg.bzh as ADMIN
+    const isAdmin = normalizedEmail === "thomas.jezequel@emg.bzh";
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser: User & { passwordHash: string } = {
+      id: "u_" + Math.random().toString(36).substring(2, 9),
+      email: normalizedEmail,
+      nom: nom.trim(),
+      role: isAdmin ? UserRole.ADMIN : (requestedRole || UserRole.LECTEUR),
+      status: isAdmin ? UserStatus.APPROVED : UserStatus.PENDING,
+      createdAt: new Date().toISOString(),
+      passwordHash: hashedPassword
+    };
  
-  db.users.push(newUser);
-  saveDatabase();
-  syncToFirestore("users", newUser.id, newUser);
+    db.users.push(newUser);
+    saveDatabase();
+    syncToFirestore("users", newUser.id, newUser);
  
-  res.json({
-    message: isAdmin 
-      ? "Compte administrateur créé et approuvé automatiquement !"
-      : "Inscription réussie ! Votre compte est en attente d'approbation de Thomas Jézéquel.",
-    user: {
-      id: newUser.id,
-      email: newUser.email,
-      nom: newUser.nom,
-      role: newUser.role,
-      status: newUser.status
-    }
-  });
+    res.json({
+      message: isAdmin 
+        ? "Compte administrateur créé et approuvé automatiquement !"
+        : "Inscription réussie ! Votre compte est en attente d'approbation de Thomas Jézéquel.",
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        nom: newUser.nom,
+        role: newUser.role,
+        status: newUser.status
+      }
+    });
+  } catch (err) {
+    console.error("Erreur lors de l'inscription :", err);
+    res.status(500).json({ error: "Erreur serveur lors de l'inscription." });
+  }
 });
  
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
+  const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+  if (!checkAndRegisterLoginAttempt(clientIp)) {
+    res.status(429).json({ error: "Trop de tentatives de connexion. Veuillez réessayer dans quelques minutes." });
+    return;
+  }
+ 
   const { email, password } = req.body;
   if (!email || !password) {
     res.status(400).json({ error: "Veuillez entrer une adresse email et un mot de passe" });
@@ -552,8 +689,33 @@ app.post("/api/auth/login", (req, res) => {
   const normalizedEmail = email.trim().toLowerCase();
   const user = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
  
-  if (!user || user.passwordHash !== password) {
+  if (!user) {
     res.status(400).json({ error: "Identifiant ou mot de passe incorrect" });
+    return;
+  }
+ 
+  try {
+    // Les mots de passe chiffrés (bcrypt) commencent toujours par "$2".
+    // Compatibilité : si un ancien mot de passe en clair est détecté, on le chiffre
+    // automatiquement dès cette connexion réussie (migration transparente, sans action requise).
+    const isHashed = user.passwordHash.startsWith("$2");
+    const passwordMatches = isHashed
+      ? await bcrypt.compare(password, user.passwordHash)
+      : password === user.passwordHash;
+ 
+    if (!passwordMatches) {
+      res.status(400).json({ error: "Identifiant ou mot de passe incorrect" });
+      return;
+    }
+ 
+    if (!isHashed) {
+      user.passwordHash = await bcrypt.hash(password, 10);
+      saveDatabase();
+      syncToFirestore("users", user.id, user);
+    }
+  } catch (err) {
+    console.error("Erreur de vérification du mot de passe :", err);
+    res.status(500).json({ error: "Erreur serveur lors de la connexion." });
     return;
   }
  
@@ -568,6 +730,7 @@ app.post("/api/auth/login", (req, res) => {
   }
  
   const token = generateToken(user.id);
+  resetLoginAttempts(clientIp);
   res.json({
     token,
     user: {
@@ -662,7 +825,13 @@ app.delete("/api/users/:id", authenticate, requireAdmin, (req, res) => {
  
 // --- CLIENTS API (CRUD) ---
 app.get("/api/clients", authenticate, (req, res) => {
-  res.json(db.clients);
+  const user = (req as any).user as User;
+  const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+  if (user.role === UserRole.ADMIN || !hasClientLimit) {
+    res.json(db.clients);
+    return;
+  }
+  res.json(db.clients.filter(c => user.allowedClientIds!.includes(c.id)));
 });
  
 app.post("/api/clients", authenticate, requireWritePermission, (req, res) => {
@@ -687,6 +856,11 @@ app.post("/api/clients", authenticate, requireWritePermission, (req, res) => {
  
 app.put("/api/clients/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
+  const user = (req as any).user as User;
+  if (!userCanAccessClient(user, id)) {
+    res.status(403).json({ error: "Vous n'êtes pas habilité à modifier ce client." });
+    return;
+  }
   const { nom, adresse, coutHoraireMO, fraisGenerauxPct } = req.body;
   const client = db.clients.find(c => c.id === id);
   if (!client) {
@@ -705,6 +879,11 @@ app.put("/api/clients/:id", authenticate, requireWritePermission, (req, res) => 
  
 app.delete("/api/clients/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
+  const user = (req as any).user as User;
+  if (!userCanAccessClient(user, id)) {
+    res.status(403).json({ error: "Vous n'êtes pas habilité à supprimer ce client." });
+    return;
+  }
   const index = db.clients.findIndex(c => c.id === id);
   if (index === -1) {
     res.status(404).json({ error: "Client introuvable" });
@@ -838,13 +1017,20 @@ app.delete("/api/subcontractors/:id", authenticate, requireWritePermission, (req
  
 // --- PROJECTS API (CRUD) ---
 app.get("/api/projects", authenticate, (req, res) => {
-  res.json(db.projects);
+  const user = (req as any).user as User;
+  res.json(getAccessibleProjects(user));
 });
  
 app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
   const data = req.body;
   if (!data.nomAffaire || !data.nomZone || !data.clientId || !data.sousTraitantId) {
     res.status(400).json({ error: "Veuillez renseigner le nom d'affaire, la zone, le client et le sous-traitant." });
+    return;
+  }
+ 
+  const user = (req as any).user as User;
+  if (!userCanAccessClient(user, data.clientId)) {
+    res.status(403).json({ error: "Vous n'êtes pas habilité à créer une affaire pour ce client." });
     return;
   }
  
@@ -920,9 +1106,18 @@ app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
 app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const data = req.body;
+  const user = (req as any).user as User;
   const project = db.projects.find(p => p.id === id);
   if (!project) {
     res.status(404).json({ error: "Projet introuvable" });
+    return;
+  }
+  if (!userCanAccessProject(user, project)) {
+    res.status(403).json({ error: "Vous n'êtes pas habilité à modifier cette affaire." });
+    return;
+  }
+  if (data.clientId !== undefined && !userCanAccessClient(user, data.clientId)) {
+    res.status(403).json({ error: "Vous n'êtes pas habilité à attribuer cette affaire à ce client." });
     return;
   }
  
@@ -973,6 +1168,16 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
  
 app.delete("/api/projects/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
+  const user = (req as any).user as User;
+  const projectToDelete = db.projects.find(p => p.id === id);
+  if (!projectToDelete) {
+    res.status(404).json({ error: "Projet introuvable" });
+    return;
+  }
+  if (!userCanAccessProject(user, projectToDelete)) {
+    res.status(403).json({ error: "Vous n'êtes pas habilité à supprimer cette affaire." });
+    return;
+  }
   const index = db.projects.findIndex(p => p.id === id);
   if (index === -1) {
     res.status(404).json({ error: "Projet introuvable" });
@@ -1008,7 +1213,13 @@ app.delete("/api/projects/:id", authenticate, requireWritePermission, (req, res)
  
 // --- BUDGETS API (CRUD) ---
 app.get("/api/budgets", authenticate, (req, res) => {
-  res.json(db.budgets);
+  const user = (req as any).user as User;
+  if (!hasAnyRestriction(user)) {
+    res.json(db.budgets);
+    return;
+  }
+  const accessibleIds = new Set(getAccessibleProjects(user).map(p => p.id));
+  res.json(db.budgets.filter(b => accessibleIds.has(b.projetId)));
 });
  
 app.put("/api/budgets/:id", authenticate, requireWritePermission, (req, res) => {
@@ -1029,6 +1240,12 @@ app.put("/api/budgets/:id", authenticate, requireWritePermission, (req, res) => 
   const budget = db.budgets.find(b => b.id === id);
   if (!budget) {
     res.status(404).json({ error: "Budget introuvable" });
+    return;
+  }
+  const userBudget = (req as any).user as User;
+  const budgetProject = db.projects.find(p => p.id === budget.projetId);
+  if (!userCanAccessProject(userBudget, budgetProject)) {
+    res.status(403).json({ error: "Vous n'êtes pas habilité à modifier le budget de cette affaire." });
     return;
   }
  
@@ -1053,7 +1270,13 @@ app.put("/api/budgets/:id", authenticate, requireWritePermission, (req, res) => 
  
 // --- REALISED (REALIŞÉ) API (CRUD) ---
 app.get("/api/realises", authenticate, (req, res) => {
-  res.json(db.realises);
+  const user = (req as any).user as User;
+  if (!hasAnyRestriction(user)) {
+    res.json(db.realises);
+    return;
+  }
+  const accessibleIds = new Set(getAccessibleProjects(user).map(p => p.id));
+  res.json(db.realises.filter(r => accessibleIds.has(r.projetId)));
 });
  
 app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) => {
@@ -1076,6 +1299,12 @@ app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) =>
   const realise = db.realises.find(r => r.id === id);
   if (!realise) {
     res.status(404).json({ error: "Réalisé introuvable" });
+    return;
+  }
+  const userRealise = (req as any).user as User;
+  const realiseProject = db.projects.find(p => p.id === realise.projetId);
+  if (!userCanAccessProject(userRealise, realiseProject)) {
+    res.status(403).json({ error: "Vous n'êtes pas habilité à modifier le réalisé de cette affaire." });
     return;
   }
  
@@ -1102,7 +1331,13 @@ app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) =>
  
 // --- BILLINGS API (CRUD) ---
 app.get("/api/billings", authenticate, (req, res) => {
-  res.json(db.billings);
+  const user = (req as any).user as User;
+  if (!hasAnyRestriction(user)) {
+    res.json(db.billings);
+    return;
+  }
+  const accessibleIds = new Set(getAccessibleProjects(user).map(p => p.id));
+  res.json(db.billings.filter(b => accessibleIds.has(b.projetId) || b.projetIds?.some(id => accessibleIds.has(id))));
 });
  
 app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
@@ -1121,6 +1356,14 @@ app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
  
   if (!projetId || !typePrestation) {
     res.status(400).json({ error: "Veuillez spécifier le projet et le type de prestation" });
+    return;
+  }
+ 
+  const userBilling = (req as any).user as User;
+  const allLinkedIds = [projetId, ...(Array.isArray(projetIds) ? projetIds : [])];
+  const hasAccessToAll = allLinkedIds.every(pid => userCanAccessProject(userBilling, db.projects.find(p => p.id === pid)));
+  if (!hasAccessToAll) {
+    res.status(403).json({ error: "Vous n'êtes pas habilité à facturer une ou plusieurs des affaires sélectionnées." });
     return;
   }
  
@@ -1165,10 +1408,28 @@ app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
 app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const data = req.body;
+  const userBillingPut = (req as any).user as User;
   const billing = db.billings.find(b => b.id === id);
   if (!billing) {
     res.status(404).json({ error: "Facturation introuvable" });
     return;
+  }
+  const currentLinkedIds = [billing.projetId, ...(billing.projetIds || [])];
+  const hasAccessToCurrent = currentLinkedIds.every(pid => userCanAccessProject(userBillingPut, db.projects.find(p => p.id === pid)));
+  if (!hasAccessToCurrent) {
+    res.status(403).json({ error: "Vous n'êtes pas habilité à modifier cette facturation." });
+    return;
+  }
+  if (data.projetId !== undefined || data.projetIds !== undefined) {
+    const nextLinkedIds = [
+      data.projetId !== undefined ? data.projetId : billing.projetId,
+      ...((data.projetIds !== undefined ? data.projetIds : billing.projetIds) || [])
+    ];
+    const hasAccessToNext = nextLinkedIds.every(pid => userCanAccessProject(userBillingPut, db.projects.find(p => p.id === pid)));
+    if (!hasAccessToNext) {
+      res.status(403).json({ error: "Vous n'êtes pas habilité à lier cette facturation à l'une des affaires sélectionnées." });
+      return;
+    }
   }
  
   if (data.projetId !== undefined) billing.projetId = data.projetId;
@@ -1205,6 +1466,18 @@ app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) =>
  
 app.delete("/api/billings/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
+  const userBillingDelete = (req as any).user as User;
+  const billingToDelete = db.billings.find(b => b.id === id);
+  if (!billingToDelete) {
+    res.status(404).json({ error: "Facturation introuvable" });
+    return;
+  }
+  const linkedIds = [billingToDelete.projetId, ...(billingToDelete.projetIds || [])];
+  const hasAccess = linkedIds.every(pid => userCanAccessProject(userBillingDelete, db.projects.find(p => p.id === pid)));
+  if (!hasAccess) {
+    res.status(403).json({ error: "Vous n'êtes pas habilité à supprimer cette facturation." });
+    return;
+  }
   const index = db.billings.findIndex(b => b.id === id);
   if (index === -1) {
     res.status(404).json({ error: "Facturation introuvable" });
@@ -1263,10 +1536,14 @@ app.delete("/api/types-ouvrage/:name", authenticate, requireAdmin, (req, res) =>
 });
  
 // --- CHANGE PASSWORD API ---
-app.put("/api/auth/change-password", authenticate, (req, res) => {
+app.put("/api/auth/change-password", authenticate, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {
     res.status(400).json({ error: "L'ancien et le nouveau mot de passe sont requis." });
+    return;
+  }
+  if (String(newPassword).length < 8) {
+    res.status(400).json({ error: "Le nouveau mot de passe doit comporter au moins 8 caractères." });
     return;
   }
   const currentUser = (req as any).user;
@@ -1275,14 +1552,26 @@ app.put("/api/auth/change-password", authenticate, (req, res) => {
     res.status(404).json({ error: "Utilisateur non trouvé" });
     return;
   }
-  if (foundUser.passwordHash !== currentPassword) {
-    res.status(400).json({ error: "L'ancien mot de passe est incorrect." });
-    return;
+ 
+  try {
+    const isHashed = foundUser.passwordHash.startsWith("$2");
+    const currentMatches = isHashed
+      ? await bcrypt.compare(currentPassword, foundUser.passwordHash)
+      : currentPassword === foundUser.passwordHash;
+ 
+    if (!currentMatches) {
+      res.status(400).json({ error: "L'ancien mot de passe est incorrect." });
+      return;
+    }
+ 
+    foundUser.passwordHash = await bcrypt.hash(newPassword, 10);
+    saveDatabase();
+    syncToFirestore("users", foundUser.id, foundUser);
+    res.json({ success: true, message: "Votre mot de passe a été modifié avec succès !" });
+  } catch (err) {
+    console.error("Erreur lors du changement de mot de passe :", err);
+    res.status(500).json({ error: "Erreur serveur lors du changement de mot de passe." });
   }
-  foundUser.passwordHash = newPassword;
-  saveDatabase();
-  syncToFirestore("users", foundUser.id, foundUser);
-  res.json({ success: true, message: "Votre mot de passe a été modifié avec succès !" });
 });
  
  
