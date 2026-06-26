@@ -28,6 +28,7 @@ var import_path = __toESM(require("path"), 1);
 var import_fs = __toESM(require("fs"), 1);
 var import_crypto = __toESM(require("crypto"), 1);
 var import_bcryptjs = __toESM(require("bcryptjs"), 1);
+var import_helmet = __toESM(require("helmet"), 1);
 var import_vite = require("vite");
 var import_app = require("firebase/app");
 var import_firestore = require("firebase/firestore");
@@ -43,8 +44,15 @@ var ADMIN_SEED_PASSWORD = process.env.ADMIN_SEED_PASSWORD || (() => {
   console.warn("\u26A0\uFE0F  ATTENTION S\xC9CURIT\xC9 : ADMIN_SEED_PASSWORD n'est pas d\xE9fini. Un mot de passe temporaire al\xE9atoire a \xE9t\xE9 g\xE9n\xE9r\xE9 pour l'amor\xE7age initial \u2014 configurez cette variable d'environnement et changez le mot de passe admin via l'application au plus vite.");
   return "Temp_" + import_crypto.default.randomBytes(6).toString("hex");
 })();
+app.use((0, import_helmet.default)({ contentSecurityPolicy: false }));
+var allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "https://logiciel-sous-traitance-production.up.railway.app",
+  "https://flowbase-29.web.app",
+  "http://localhost:5173"
+].filter(Boolean);
 app.use((0, import_cors.default)({
-  origin: "https://flowbase-29.web.app",
+  origin: allowedOrigins,
   credentials: true
 }));
 app.use(import_express.default.json());
@@ -239,7 +247,8 @@ var DEFAULT_DB = {
       dateFacturation: "2026-05-28",
       dateEcheance: "2026-06-28"
     }
-  ]
+  ],
+  auditLog: []
 };
 var db = { ...DEFAULT_DB };
 function loadDatabase() {
@@ -255,7 +264,8 @@ function loadDatabase() {
         budgets: loaded.budgets || DEFAULT_DB.budgets,
         realises: loaded.realises || DEFAULT_DB.realises,
         billings: loaded.billings || DEFAULT_DB.billings,
-        typesOuvrage: loaded.typesOuvrage || DEFAULT_DB.typesOuvrage
+        typesOuvrage: loaded.typesOuvrage || DEFAULT_DB.typesOuvrage,
+        auditLog: loaded.auditLog || []
       };
       console.log("Database successfully loaded from", DB_FILE);
     } else {
@@ -374,6 +384,11 @@ async function loadDatabaseFromFirestore() {
     if (typeDoc.exists() && typeDoc.data()?.typesOuvrage) {
       typesOuvrage = typeDoc.data()?.typesOuvrage;
     }
+    const auditDoc = await (0, import_firestore.getDoc)((0, import_firestore.doc)(firestoreDb, "metadata", "auditLog"));
+    let auditLog = [];
+    if (auditDoc.exists() && Array.isArray(auditDoc.data()?.entries)) {
+      auditLog = auditDoc.data()?.entries;
+    }
     if (users.length === 0 && clients.length === 0 && projects.length === 0) {
       await seedFirestoreFromDefault();
       await loadDatabaseFromFirestore();
@@ -387,7 +402,8 @@ async function loadDatabaseFromFirestore() {
       budgets,
       realises,
       billings,
-      typesOuvrage
+      typesOuvrage,
+      auditLog
     };
     console.log("[Firebase] Successfully loaded database state from Firestore!");
     saveDatabase();
@@ -464,6 +480,14 @@ function requireWritePermission(req, res, next) {
   }
   next();
 }
+function requireUnrestrictedWrite(req, res, next) {
+  const user = req.user;
+  if (hasAnyRestriction(user)) {
+    res.status(403).json({ error: "Votre compte est restreint \xE0 certains clients : cette action n'est pas autoris\xE9e." });
+    return;
+  }
+  next();
+}
 function requireAdmin(req, res, next) {
   const user = req.user;
   if (user.role !== "Administrateur" /* ADMIN */) {
@@ -514,6 +538,31 @@ function checkAndRegisterLoginAttempt(ip) {
 }
 function resetLoginAttempts(ip) {
   loginAttempts.delete(ip);
+}
+var MAX_AUDIT_ENTRIES = 1e3;
+function logAudit(actor, action, details) {
+  try {
+    const entry = {
+      id: "log_" + Math.random().toString(36).substring(2, 9),
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      actorEmail: actor.email,
+      actorNom: actor.nom,
+      action,
+      details
+    };
+    db.auditLog.push(entry);
+    if (db.auditLog.length > MAX_AUDIT_ENTRIES) {
+      db.auditLog = db.auditLog.slice(db.auditLog.length - MAX_AUDIT_ENTRIES);
+    }
+    saveDatabase();
+    if (firestoreDb) {
+      (0, import_firestore.setDoc)((0, import_firestore.doc)(firestoreDb, "metadata", "auditLog"), { entries: db.auditLog }).catch((err) => {
+        console.error("[Firebase] Erreur de synchronisation du journal d'audit :", err);
+      });
+    }
+  } catch (err) {
+    console.error("Erreur lors de l'\xE9criture du journal d'audit :", err);
+  }
 }
 app.post("/api/auth/register", async (req, res) => {
   const { email, nom, password, requestedRole } = req.body;
@@ -652,12 +701,23 @@ app.put("/api/users/:id", authenticate, requireAdmin, (req, res) => {
     res.status(400).json({ error: "Vous ne pouvez pas modifier le statut ou le r\xF4le de votre propre compte administrateur" });
     return;
   }
+  const previousStatus = user.status;
+  const previousRole = user.role;
   if (status !== void 0) user.status = status;
   if (role !== void 0) user.role = role;
   if (allowedProjectIds !== void 0) user.allowedProjectIds = allowedProjectIds;
   if (allowedClientIds !== void 0) user.allowedClientIds = allowedClientIds;
   if (poste !== void 0) user.poste = poste;
   if (nom !== void 0) user.nom = nom;
+  if (status !== void 0 && status !== previousStatus) {
+    logAudit(currentAdmin, "Changement de statut utilisateur", `${user.email} : ${previousStatus} \u2192 ${status}`);
+  }
+  if (role !== void 0 && role !== previousRole) {
+    logAudit(currentAdmin, "Changement de r\xF4le utilisateur", `${user.email} : ${previousRole} \u2192 ${role}`);
+  }
+  if (allowedClientIds !== void 0 || allowedProjectIds !== void 0) {
+    logAudit(currentAdmin, "Modification des habilitations", `${user.email} : clients=[${(allowedClientIds || []).join(", ")}] projets=[${(allowedProjectIds || []).join(", ")}]`);
+  }
   saveDatabase();
   syncToFirestore("users", user.id, user);
   res.json(user);
@@ -678,6 +738,7 @@ app.delete("/api/users/:id", authenticate, requireAdmin, (req, res) => {
   db.users.splice(index, 1);
   saveDatabase();
   deleteFromFirestore("users", id);
+  logAudit(currentAdmin, "Suppression d'utilisateur", `${user.email} (${user.nom})`);
   res.json({ success: true, message: "Utilisateur supprim\xE9" });
 });
 app.get("/api/clients", authenticate, (req, res) => {
@@ -741,6 +802,7 @@ app.delete("/api/clients/:id", authenticate, requireWritePermission, (req, res) 
     res.status(404).json({ error: "Client introuvable" });
     return;
   }
+  const clientName = db.clients[index].nom;
   const clientProjects = db.projects.filter((p) => p.clientId === id);
   const projectIds = clientProjects.map((p) => p.id);
   const budgetsToDelete = db.budgets.filter((b) => projectIds.includes(b.projetId));
@@ -765,12 +827,13 @@ app.delete("/api/clients/:id", authenticate, requireWritePermission, (req, res) 
   for (const b of billingsToDelete) {
     deleteFromFirestore("billings", b.id);
   }
+  logAudit(user, "Suppression de client", `${clientName} (et ${projectIds.length} affaires associ\xE9es)`);
   res.json({ success: true, message: `Client et ${projectIds.length} projets associ\xE9s ont \xE9t\xE9 supprim\xE9s.` });
 });
 app.get("/api/subcontractors", authenticate, (req, res) => {
   res.json(db.subcontractors);
 });
-app.post("/api/subcontractors", authenticate, requireWritePermission, (req, res) => {
+app.post("/api/subcontractors", authenticate, requireWritePermission, requireUnrestrictedWrite, (req, res) => {
   const { nom, adresse, coutHoraireMO, fraisGenerauxPct, estExterieur } = req.body;
   if (!nom) {
     res.status(400).json({ error: "Le nom du sous-traitant est requis" });
@@ -790,7 +853,7 @@ app.post("/api/subcontractors", authenticate, requireWritePermission, (req, res)
   syncToFirestore("subcontractors", newSub.id, newSub);
   res.json(newSub);
 });
-app.put("/api/subcontractors/:id", authenticate, requireWritePermission, (req, res) => {
+app.put("/api/subcontractors/:id", authenticate, requireWritePermission, requireUnrestrictedWrite, (req, res) => {
   const { id } = req.params;
   const { nom, adresse, coutHoraireMO, fraisGenerauxPct, estExterieur } = req.body;
   const sub = db.subcontractors.find((s) => s.id === id);
@@ -807,13 +870,15 @@ app.put("/api/subcontractors/:id", authenticate, requireWritePermission, (req, r
   syncToFirestore("subcontractors", sub.id, sub);
   res.json(sub);
 });
-app.delete("/api/subcontractors/:id", authenticate, requireWritePermission, (req, res) => {
+app.delete("/api/subcontractors/:id", authenticate, requireWritePermission, requireUnrestrictedWrite, (req, res) => {
   const { id } = req.params;
+  const subDeleteUser = req.user;
   const index = db.subcontractors.findIndex((s) => s.id === id);
   if (index === -1) {
     res.status(404).json({ error: "Sous-traitant introuvable" });
     return;
   }
+  const subName = db.subcontractors[index].nom;
   const subProjects = db.projects.filter((p) => p.sousTraitantId === id);
   const projectIds = subProjects.map((p) => p.id);
   const budgetsToDelete = db.budgets.filter((b) => projectIds.includes(b.projetId));
@@ -838,6 +903,7 @@ app.delete("/api/subcontractors/:id", authenticate, requireWritePermission, (req
   for (const b of billingsToDelete) {
     deleteFromFirestore("billings", b.id);
   }
+  logAudit(subDeleteUser, "Suppression de sous-traitant", `${subName} (et ${projectIds.length} affaires associ\xE9es)`);
   res.json({ success: true, message: `Sous-traitant et ${projectIds.length} projets associ\xE9s ont \xE9t\xE9 supprim\xE9s.` });
 });
 app.get("/api/projects", authenticate, (req, res) => {
@@ -1004,6 +1070,7 @@ app.delete("/api/projects/:id", authenticate, requireWritePermission, (req, res)
   for (const b of billingsToDelete) {
     deleteFromFirestore("billings", b.id);
   }
+  logAudit(user, "Suppression d'affaire", `${projectToDelete.nomAffaire} - ${projectToDelete.nomZone}`);
   res.json({ success: true });
 });
 app.get("/api/budgets", authenticate, (req, res) => {
@@ -1321,11 +1388,16 @@ app.put("/api/auth/change-password", authenticate, async (req, res) => {
     foundUser.passwordHash = await import_bcryptjs.default.hash(newPassword, 10);
     saveDatabase();
     syncToFirestore("users", foundUser.id, foundUser);
+    logAudit(foundUser, "Changement de mot de passe", `${foundUser.email} a modifi\xE9 son mot de passe`);
     res.json({ success: true, message: "Votre mot de passe a \xE9t\xE9 modifi\xE9 avec succ\xE8s !" });
   } catch (err) {
     console.error("Erreur lors du changement de mot de passe :", err);
     res.status(500).json({ error: "Erreur serveur lors du changement de mot de passe." });
   }
+});
+app.get("/api/audit-log", authenticate, requireAdmin, (req, res) => {
+  const sorted = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  res.json(sorted);
 });
 async function startListening() {
   await loadDatabaseFromFirestore();
