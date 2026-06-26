@@ -26,12 +26,23 @@ var import_express = __toESM(require("express"), 1);
 var import_cors = __toESM(require("cors"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_fs = __toESM(require("fs"), 1);
+var import_crypto = __toESM(require("crypto"), 1);
+var import_bcryptjs = __toESM(require("bcryptjs"), 1);
 var import_vite = require("vite");
 var import_app = require("firebase/app");
 var import_firestore = require("firebase/firestore");
 var app = (0, import_express.default)();
+app.set("trust proxy", 1);
 var PORT = 3e3;
 var DB_FILE = import_path.default.join(process.cwd(), "db.json");
+var JWT_SECRET = process.env.JWT_SECRET || (() => {
+  console.warn("\u26A0\uFE0F  ATTENTION S\xC9CURIT\xC9 : la variable d'environnement JWT_SECRET n'est pas d\xE9finie. Un secret temporaire al\xE9atoire est utilis\xE9 pour cette session serveur. Configurez JWT_SECRET dans les variables d'environnement Railway pour la production.");
+  return import_crypto.default.randomBytes(32).toString("hex");
+})();
+var ADMIN_SEED_PASSWORD = process.env.ADMIN_SEED_PASSWORD || (() => {
+  console.warn("\u26A0\uFE0F  ATTENTION S\xC9CURIT\xC9 : ADMIN_SEED_PASSWORD n'est pas d\xE9fini. Un mot de passe temporaire al\xE9atoire a \xE9t\xE9 g\xE9n\xE9r\xE9 pour l'amor\xE7age initial \u2014 configurez cette variable d'environnement et changez le mot de passe admin via l'application au plus vite.");
+  return "Temp_" + import_crypto.default.randomBytes(6).toString("hex");
+})();
 app.use((0, import_cors.default)({
   origin: "https://flowbase-29.web.app",
   credentials: true
@@ -47,8 +58,8 @@ var DEFAULT_DB = {
       status: "Approuv\xE9" /* APPROVED */,
       poste: "Conducteur principal",
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-      passwordHash: "emg2026"
-      // Simple text comparison for secure prototype
+      passwordHash: ADMIN_SEED_PASSWORD
+      // Variable d'environnement (jamais en clair dans le code)
     },
     {
       id: "user-demande",
@@ -58,7 +69,8 @@ var DEFAULT_DB = {
       status: "En attente" /* PENDING */,
       poste: "Dessinateur projeteur",
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-      passwordHash: "collab"
+      passwordHash: "Demo_" + import_crypto.default.randomBytes(4).toString("hex")
+      // Compte de démo en attente, mot de passe non communiqué
     }
   ],
   typesOuvrage: ["Passerelle", "B\xE2timent industriel", "Charpente de bureaux", "Serrurerie", "Pyl\xF4ne", "Ouvrage d'art"],
@@ -385,19 +397,36 @@ async function loadDatabaseFromFirestore() {
   }
 }
 loadDatabase();
+function base64url(input) {
+  return Buffer.from(input).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function base64urlDecode(input) {
+  const padded = input.replace(/-/g, "+").replace(/_/g, "/");
+  return Buffer.from(padded, "base64");
+}
 function generateToken(userId) {
-  const payload = JSON.stringify({ userId, expires: Date.now() + 24 * 60 * 60 * 1e3 });
-  return Buffer.from(payload).toString("base64");
+  const payload = { userId, expires: Date.now() + 24 * 60 * 60 * 1e3 };
+  const payloadStr = base64url(JSON.stringify(payload));
+  const signature = base64url(import_crypto.default.createHmac("sha256", JWT_SECRET).update(payloadStr).digest());
+  return `${payloadStr}.${signature}`;
 }
 function parseToken(token) {
   try {
-    const payload = JSON.parse(Buffer.from(token, "base64").toString("utf-8"));
-    if (payload && payload.userId) {
-      return payload;
+    const parts = token.split(".");
+    if (parts.length !== 2) return null;
+    const [payloadStr, signature] = parts;
+    const expectedSignature = base64url(import_crypto.default.createHmac("sha256", JWT_SECRET).update(payloadStr).digest());
+    const sigBuf = Buffer.from(signature);
+    const expectedBuf = Buffer.from(expectedSignature);
+    if (sigBuf.length !== expectedBuf.length || !import_crypto.default.timingSafeEqual(sigBuf, expectedBuf)) {
+      return null;
     }
+    const payload = JSON.parse(base64urlDecode(payloadStr).toString("utf-8"));
+    if (!payload || !payload.userId || !payload.expires) return null;
+    return payload;
   } catch {
+    return null;
   }
-  return null;
 }
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -409,6 +438,10 @@ function authenticate(req, res, next) {
   const parsed = parseToken(token);
   if (!parsed) {
     res.status(401).json({ error: "Session expir\xE9e ou invalide" });
+    return;
+  }
+  if (parsed.expires < Date.now()) {
+    res.status(401).json({ error: "Votre session a expir\xE9, veuillez vous reconnecter." });
     return;
   }
   const user = db.users.find((u) => u.id === parsed.userId);
@@ -439,10 +472,57 @@ function requireAdmin(req, res, next) {
   }
   next();
 }
-app.post("/api/auth/register", (req, res) => {
+function hasAnyRestriction(user) {
+  if (user.role === "Administrateur" /* ADMIN */) return false;
+  const hasProjectLimit = Array.isArray(user.allowedProjectIds) && user.allowedProjectIds.length > 0;
+  const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+  return hasProjectLimit || hasClientLimit;
+}
+function userCanAccessProject(user, project) {
+  if (!project) return false;
+  if (user.role === "Administrateur" /* ADMIN */) return true;
+  if (!hasAnyRestriction(user)) return true;
+  const hasProjectLimit = Array.isArray(user.allowedProjectIds) && user.allowedProjectIds.length > 0;
+  const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+  const isProjectAllowed = hasProjectLimit && user.allowedProjectIds.includes(project.id);
+  const isClientAllowed = hasClientLimit && user.allowedClientIds.includes(project.clientId);
+  return isProjectAllowed || isClientAllowed;
+}
+function userCanAccessClient(user, clientId) {
+  if (!clientId) return false;
+  if (user.role === "Administrateur" /* ADMIN */) return true;
+  const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+  if (!hasClientLimit) return true;
+  return user.allowedClientIds.includes(clientId);
+}
+function getAccessibleProjects(user) {
+  if (!hasAnyRestriction(user)) return db.projects;
+  return db.projects.filter((p) => userCanAccessProject(user, p));
+}
+var loginAttempts = /* @__PURE__ */ new Map();
+var MAX_LOGIN_ATTEMPTS = 8;
+var LOGIN_WINDOW_MS = 10 * 60 * 1e3;
+function checkAndRegisterLoginAttempt(ip) {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now - entry.firstAttempt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(ip, { count: 1, firstAttempt: now });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= MAX_LOGIN_ATTEMPTS;
+}
+function resetLoginAttempts(ip) {
+  loginAttempts.delete(ip);
+}
+app.post("/api/auth/register", async (req, res) => {
   const { email, nom, password, requestedRole } = req.body;
   if (!email || !nom || !password) {
     res.status(400).json({ error: "Veuillez remplir tous les champs obligatoires" });
+    return;
+  }
+  if (String(password).length < 8) {
+    res.status(400).json({ error: "Le mot de passe doit comporter au moins 8 caract\xE8res." });
     return;
   }
   const normalizedEmail = email.trim().toLowerCase();
@@ -450,31 +530,42 @@ app.post("/api/auth/register", (req, res) => {
     res.status(400).json({ error: "Cette adresse email est d\xE9j\xE0 enregistr\xE9e" });
     return;
   }
-  const isAdmin = normalizedEmail === "thomas.jezequel@emg.bzh";
-  const newUser = {
-    id: "u_" + Math.random().toString(36).substring(2, 9),
-    email: normalizedEmail,
-    nom: nom.trim(),
-    role: isAdmin ? "Administrateur" /* ADMIN */ : requestedRole || "Lecteur" /* LECTEUR */,
-    status: isAdmin ? "Approuv\xE9" /* APPROVED */ : "En attente" /* PENDING */,
-    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-    passwordHash: password
-  };
-  db.users.push(newUser);
-  saveDatabase();
-  syncToFirestore("users", newUser.id, newUser);
-  res.json({
-    message: isAdmin ? "Compte administrateur cr\xE9\xE9 et approuv\xE9 automatiquement !" : "Inscription r\xE9ussie ! Votre compte est en attente d'approbation de Thomas J\xE9z\xE9quel.",
-    user: {
-      id: newUser.id,
-      email: newUser.email,
-      nom: newUser.nom,
-      role: newUser.role,
-      status: newUser.status
-    }
-  });
+  try {
+    const isAdmin = normalizedEmail === "thomas.jezequel@emg.bzh";
+    const hashedPassword = await import_bcryptjs.default.hash(password, 10);
+    const newUser = {
+      id: "u_" + Math.random().toString(36).substring(2, 9),
+      email: normalizedEmail,
+      nom: nom.trim(),
+      role: isAdmin ? "Administrateur" /* ADMIN */ : requestedRole || "Lecteur" /* LECTEUR */,
+      status: isAdmin ? "Approuv\xE9" /* APPROVED */ : "En attente" /* PENDING */,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      passwordHash: hashedPassword
+    };
+    db.users.push(newUser);
+    saveDatabase();
+    syncToFirestore("users", newUser.id, newUser);
+    res.json({
+      message: isAdmin ? "Compte administrateur cr\xE9\xE9 et approuv\xE9 automatiquement !" : "Inscription r\xE9ussie ! Votre compte est en attente d'approbation de Thomas J\xE9z\xE9quel.",
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        nom: newUser.nom,
+        role: newUser.role,
+        status: newUser.status
+      }
+    });
+  } catch (err) {
+    console.error("Erreur lors de l'inscription :", err);
+    res.status(500).json({ error: "Erreur serveur lors de l'inscription." });
+  }
 });
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
+  const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+  if (!checkAndRegisterLoginAttempt(clientIp)) {
+    res.status(429).json({ error: "Trop de tentatives de connexion. Veuillez r\xE9essayer dans quelques minutes." });
+    return;
+  }
   const { email, password } = req.body;
   if (!email || !password) {
     res.status(400).json({ error: "Veuillez entrer une adresse email et un mot de passe" });
@@ -482,8 +573,25 @@ app.post("/api/auth/login", (req, res) => {
   }
   const normalizedEmail = email.trim().toLowerCase();
   const user = db.users.find((u) => u.email.toLowerCase() === normalizedEmail);
-  if (!user || user.passwordHash !== password) {
+  if (!user) {
     res.status(400).json({ error: "Identifiant ou mot de passe incorrect" });
+    return;
+  }
+  try {
+    const isHashed = user.passwordHash.startsWith("$2");
+    const passwordMatches = isHashed ? await import_bcryptjs.default.compare(password, user.passwordHash) : password === user.passwordHash;
+    if (!passwordMatches) {
+      res.status(400).json({ error: "Identifiant ou mot de passe incorrect" });
+      return;
+    }
+    if (!isHashed) {
+      user.passwordHash = await import_bcryptjs.default.hash(password, 10);
+      saveDatabase();
+      syncToFirestore("users", user.id, user);
+    }
+  } catch (err) {
+    console.error("Erreur de v\xE9rification du mot de passe :", err);
+    res.status(500).json({ error: "Erreur serveur lors de la connexion." });
     return;
   }
   if (user.status === "En attente" /* PENDING */) {
@@ -495,6 +603,7 @@ app.post("/api/auth/login", (req, res) => {
     return;
   }
   const token = generateToken(user.id);
+  resetLoginAttempts(clientIp);
   res.json({
     token,
     user: {
@@ -572,7 +681,13 @@ app.delete("/api/users/:id", authenticate, requireAdmin, (req, res) => {
   res.json({ success: true, message: "Utilisateur supprim\xE9" });
 });
 app.get("/api/clients", authenticate, (req, res) => {
-  res.json(db.clients);
+  const user = req.user;
+  const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+  if (user.role === "Administrateur" /* ADMIN */ || !hasClientLimit) {
+    res.json(db.clients);
+    return;
+  }
+  res.json(db.clients.filter((c) => user.allowedClientIds.includes(c.id)));
 });
 app.post("/api/clients", authenticate, requireWritePermission, (req, res) => {
   const { nom, adresse, coutHoraireMO, fraisGenerauxPct } = req.body;
@@ -595,6 +710,11 @@ app.post("/api/clients", authenticate, requireWritePermission, (req, res) => {
 });
 app.put("/api/clients/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
+  const user = req.user;
+  if (!userCanAccessClient(user, id)) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 modifier ce client." });
+    return;
+  }
   const { nom, adresse, coutHoraireMO, fraisGenerauxPct } = req.body;
   const client = db.clients.find((c) => c.id === id);
   if (!client) {
@@ -611,6 +731,11 @@ app.put("/api/clients/:id", authenticate, requireWritePermission, (req, res) => 
 });
 app.delete("/api/clients/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
+  const user = req.user;
+  if (!userCanAccessClient(user, id)) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 supprimer ce client." });
+    return;
+  }
   const index = db.clients.findIndex((c) => c.id === id);
   if (index === -1) {
     res.status(404).json({ error: "Client introuvable" });
@@ -716,12 +841,18 @@ app.delete("/api/subcontractors/:id", authenticate, requireWritePermission, (req
   res.json({ success: true, message: `Sous-traitant et ${projectIds.length} projets associ\xE9s ont \xE9t\xE9 supprim\xE9s.` });
 });
 app.get("/api/projects", authenticate, (req, res) => {
-  res.json(db.projects);
+  const user = req.user;
+  res.json(getAccessibleProjects(user));
 });
 app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
   const data = req.body;
   if (!data.nomAffaire || !data.nomZone || !data.clientId || !data.sousTraitantId) {
     res.status(400).json({ error: "Veuillez renseigner le nom d'affaire, la zone, le client et le sous-traitant." });
+    return;
+  }
+  const user = req.user;
+  if (!userCanAccessClient(user, data.clientId)) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 cr\xE9er une affaire pour ce client." });
     return;
   }
   const pPRS = data.poidsPRS ? Number(data.poidsPRS) : void 0;
@@ -788,9 +919,18 @@ app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
 app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const data = req.body;
+  const user = req.user;
   const project = db.projects.find((p) => p.id === id);
   if (!project) {
     res.status(404).json({ error: "Projet introuvable" });
+    return;
+  }
+  if (!userCanAccessProject(user, project)) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 modifier cette affaire." });
+    return;
+  }
+  if (data.clientId !== void 0 && !userCanAccessClient(user, data.clientId)) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 attribuer cette affaire \xE0 ce client." });
     return;
   }
   if (data.nomAffaire !== void 0) project.nomAffaire = data.nomAffaire;
@@ -831,6 +971,16 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
 });
 app.delete("/api/projects/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
+  const user = req.user;
+  const projectToDelete = db.projects.find((p) => p.id === id);
+  if (!projectToDelete) {
+    res.status(404).json({ error: "Projet introuvable" });
+    return;
+  }
+  if (!userCanAccessProject(user, projectToDelete)) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 supprimer cette affaire." });
+    return;
+  }
   const index = db.projects.findIndex((p) => p.id === id);
   if (index === -1) {
     res.status(404).json({ error: "Projet introuvable" });
@@ -857,7 +1007,13 @@ app.delete("/api/projects/:id", authenticate, requireWritePermission, (req, res)
   res.json({ success: true });
 });
 app.get("/api/budgets", authenticate, (req, res) => {
-  res.json(db.budgets);
+  const user = req.user;
+  if (!hasAnyRestriction(user)) {
+    res.json(db.budgets);
+    return;
+  }
+  const accessibleIds = new Set(getAccessibleProjects(user).map((p) => p.id));
+  res.json(db.budgets.filter((b) => accessibleIds.has(b.projetId)));
 });
 app.put("/api/budgets/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
@@ -879,6 +1035,12 @@ app.put("/api/budgets/:id", authenticate, requireWritePermission, (req, res) => 
     res.status(404).json({ error: "Budget introuvable" });
     return;
   }
+  const userBudget = req.user;
+  const budgetProject = db.projects.find((p) => p.id === budget.projetId);
+  if (!userCanAccessProject(userBudget, budgetProject)) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 modifier le budget de cette affaire." });
+    return;
+  }
   if (poidsVendu !== void 0) budget.poidsVendu = Number(poidsVendu) || 0;
   if (budgetFourniture !== void 0) budget.budgetFourniture = Number(budgetFourniture) || 0;
   if (budgetMainOeuvre !== void 0) budget.budgetMainOeuvre = Number(budgetMainOeuvre) || 0;
@@ -895,7 +1057,13 @@ app.put("/api/budgets/:id", authenticate, requireWritePermission, (req, res) => 
   res.json(budget);
 });
 app.get("/api/realises", authenticate, (req, res) => {
-  res.json(db.realises);
+  const user = req.user;
+  if (!hasAnyRestriction(user)) {
+    res.json(db.realises);
+    return;
+  }
+  const accessibleIds = new Set(getAccessibleProjects(user).map((p) => p.id));
+  res.json(db.realises.filter((r) => accessibleIds.has(r.projetId)));
 });
 app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
@@ -919,6 +1087,12 @@ app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) =>
     res.status(404).json({ error: "R\xE9alis\xE9 introuvable" });
     return;
   }
+  const userRealise = req.user;
+  const realiseProject = db.projects.find((p) => p.id === realise.projetId);
+  if (!userCanAccessProject(userRealise, realiseProject)) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 modifier le r\xE9alis\xE9 de cette affaire." });
+    return;
+  }
   if (poidsFabrique !== void 0) realise.poidsFabrique = Number(poidsFabrique) || 0;
   if (achatsFournitureRealise !== void 0) realise.achatsFournitureRealise = Number(achatsFournitureRealise) || 0;
   if (achatsMainOeuvreRealise !== void 0) realise.achatsMainOeuvreRealise = Number(achatsMainOeuvreRealise) || 0;
@@ -937,7 +1111,13 @@ app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) =>
   res.json(realise);
 });
 app.get("/api/billings", authenticate, (req, res) => {
-  res.json(db.billings);
+  const user = req.user;
+  if (!hasAnyRestriction(user)) {
+    res.json(db.billings);
+    return;
+  }
+  const accessibleIds = new Set(getAccessibleProjects(user).map((p) => p.id));
+  res.json(db.billings.filter((b) => accessibleIds.has(b.projetId) || b.projetIds?.some((id) => accessibleIds.has(id))));
 });
 app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
   const {
@@ -954,6 +1134,13 @@ app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
   } = req.body;
   if (!projetId || !typePrestation) {
     res.status(400).json({ error: "Veuillez sp\xE9cifier le projet et le type de prestation" });
+    return;
+  }
+  const userBilling = req.user;
+  const allLinkedIds = [projetId, ...Array.isArray(projetIds) ? projetIds : []];
+  const hasAccessToAll = allLinkedIds.every((pid) => userCanAccessProject(userBilling, db.projects.find((p) => p.id === pid)));
+  if (!hasAccessToAll) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 facturer une ou plusieurs des affaires s\xE9lectionn\xE9es." });
     return;
   }
   const newBilling = {
@@ -992,10 +1179,28 @@ app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
 app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
   const data = req.body;
+  const userBillingPut = req.user;
   const billing = db.billings.find((b) => b.id === id);
   if (!billing) {
     res.status(404).json({ error: "Facturation introuvable" });
     return;
+  }
+  const currentLinkedIds = [billing.projetId, ...billing.projetIds || []];
+  const hasAccessToCurrent = currentLinkedIds.every((pid) => userCanAccessProject(userBillingPut, db.projects.find((p) => p.id === pid)));
+  if (!hasAccessToCurrent) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 modifier cette facturation." });
+    return;
+  }
+  if (data.projetId !== void 0 || data.projetIds !== void 0) {
+    const nextLinkedIds = [
+      data.projetId !== void 0 ? data.projetId : billing.projetId,
+      ...(data.projetIds !== void 0 ? data.projetIds : billing.projetIds) || []
+    ];
+    const hasAccessToNext = nextLinkedIds.every((pid) => userCanAccessProject(userBillingPut, db.projects.find((p) => p.id === pid)));
+    if (!hasAccessToNext) {
+      res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 lier cette facturation \xE0 l'une des affaires s\xE9lectionn\xE9es." });
+      return;
+    }
   }
   if (data.projetId !== void 0) billing.projetId = data.projetId;
   if (data.projetIds !== void 0) billing.projetIds = Array.isArray(data.projetIds) ? data.projetIds : [];
@@ -1027,6 +1232,18 @@ app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) =>
 });
 app.delete("/api/billings/:id", authenticate, requireWritePermission, (req, res) => {
   const { id } = req.params;
+  const userBillingDelete = req.user;
+  const billingToDelete = db.billings.find((b) => b.id === id);
+  if (!billingToDelete) {
+    res.status(404).json({ error: "Facturation introuvable" });
+    return;
+  }
+  const linkedIds = [billingToDelete.projetId, ...billingToDelete.projetIds || []];
+  const hasAccess = linkedIds.every((pid) => userCanAccessProject(userBillingDelete, db.projects.find((p) => p.id === pid)));
+  if (!hasAccess) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 supprimer cette facturation." });
+    return;
+  }
   const index = db.billings.findIndex((b) => b.id === id);
   if (index === -1) {
     res.status(404).json({ error: "Facturation introuvable" });
@@ -1078,10 +1295,14 @@ app.delete("/api/types-ouvrage/:name", authenticate, requireAdmin, (req, res) =>
   syncToFirestore("metadata", "global", { typesOuvrage: db.typesOuvrage });
   res.json({ success: true, list: db.typesOuvrage });
 });
-app.put("/api/auth/change-password", authenticate, (req, res) => {
+app.put("/api/auth/change-password", authenticate, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {
     res.status(400).json({ error: "L'ancien et le nouveau mot de passe sont requis." });
+    return;
+  }
+  if (String(newPassword).length < 8) {
+    res.status(400).json({ error: "Le nouveau mot de passe doit comporter au moins 8 caract\xE8res." });
     return;
   }
   const currentUser = req.user;
@@ -1090,14 +1311,21 @@ app.put("/api/auth/change-password", authenticate, (req, res) => {
     res.status(404).json({ error: "Utilisateur non trouv\xE9" });
     return;
   }
-  if (foundUser.passwordHash !== currentPassword) {
-    res.status(400).json({ error: "L'ancien mot de passe est incorrect." });
-    return;
+  try {
+    const isHashed = foundUser.passwordHash.startsWith("$2");
+    const currentMatches = isHashed ? await import_bcryptjs.default.compare(currentPassword, foundUser.passwordHash) : currentPassword === foundUser.passwordHash;
+    if (!currentMatches) {
+      res.status(400).json({ error: "L'ancien mot de passe est incorrect." });
+      return;
+    }
+    foundUser.passwordHash = await import_bcryptjs.default.hash(newPassword, 10);
+    saveDatabase();
+    syncToFirestore("users", foundUser.id, foundUser);
+    res.json({ success: true, message: "Votre mot de passe a \xE9t\xE9 modifi\xE9 avec succ\xE8s !" });
+  } catch (err) {
+    console.error("Erreur lors du changement de mot de passe :", err);
+    res.status(500).json({ error: "Erreur serveur lors du changement de mot de passe." });
   }
-  foundUser.passwordHash = newPassword;
-  saveDatabase();
-  syncToFirestore("users", foundUser.id, foundUser);
-  res.json({ success: true, message: "Votre mot de passe a \xE9t\xE9 modifi\xE9 avec succ\xE8s !" });
 });
 async function startListening() {
   await loadDatabaseFromFirestore();

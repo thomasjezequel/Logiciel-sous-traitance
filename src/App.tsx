@@ -823,7 +823,7 @@ export default function App() {
 
 
 
-          <p className="text-xs text-slate-500 mt-8 font-mono">FlowFab v3.1.0 • Pilotage de Fabrication</p>
+          <p className="text-xs text-slate-500 mt-8 font-mono">FlowFab v3.1.1 • Pilotage de Fabrication</p>
         </div>
 
         {/* Right Form Input Section */}
