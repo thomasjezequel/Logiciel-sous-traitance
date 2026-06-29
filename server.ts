@@ -29,6 +29,11 @@ const DB_FILE = path.join(process.cwd(), "db.json");
 // Clé secrète utilisée pour signer les jetons de connexion (JWT-like).
 // IMPORTANT : configurez la variable d'environnement JWT_SECRET sur Railway en production.
 // Sans elle, un secret aléatoire est généré à chaque démarrage, ce qui déconnecte tout le monde au redémarrage du serveur.
+// Durée de validité d'une session, en heures. Configurable via la variable d'environnement
+// SESSION_DURATION_HOURS (ex: 8 pour 8h, 168 pour 7 jours). Valeur par défaut : 24h.
+const SESSION_DURATION_HOURS: number = Number(process.env.SESSION_DURATION_HOURS) > 0
+  ? Number(process.env.SESSION_DURATION_HOURS)
+  : 24;
 const JWT_SECRET: string = process.env.JWT_SECRET || (() => {
   console.warn("⚠️  ATTENTION SÉCURITÉ : la variable d'environnement JWT_SECRET n'est pas définie. Un secret temporaire aléatoire est utilisé pour cette session serveur. Configurez JWT_SECRET dans les variables d'environnement Railway pour la production.");
   return crypto.randomBytes(32).toString("hex");
@@ -495,7 +500,7 @@ function base64urlDecode(input: string): Buffer {
 // Jeton de connexion signé (type JWT) : impossible à falsifier sans connaître JWT_SECRET.
 // Toute modification du contenu (userId, expiration) invalide automatiquement la signature.
 function generateToken(userId: string): string {
-  const payload = { userId, expires: Date.now() + 24 * 60 * 60 * 1000 };
+  const payload = { userId, expires: Date.now() + SESSION_DURATION_HOURS * 60 * 60 * 1000 };
   const payloadStr = base64url(JSON.stringify(payload));
   const signature = base64url(crypto.createHmac("sha256", JWT_SECRET).update(payloadStr).digest());
   return `${payloadStr}.${signature}`;

@@ -36,6 +36,7 @@ var app = (0, import_express.default)();
 app.set("trust proxy", 1);
 var PORT = 3e3;
 var DB_FILE = import_path.default.join(process.cwd(), "db.json");
+var SESSION_DURATION_HOURS = Number(process.env.SESSION_DURATION_HOURS) > 0 ? Number(process.env.SESSION_DURATION_HOURS) : 24;
 var JWT_SECRET = process.env.JWT_SECRET || (() => {
   console.warn("\u26A0\uFE0F  ATTENTION S\xC9CURIT\xC9 : la variable d'environnement JWT_SECRET n'est pas d\xE9finie. Un secret temporaire al\xE9atoire est utilis\xE9 pour cette session serveur. Configurez JWT_SECRET dans les variables d'environnement Railway pour la production.");
   return import_crypto.default.randomBytes(32).toString("hex");
@@ -421,7 +422,7 @@ function base64urlDecode(input) {
   return Buffer.from(padded, "base64");
 }
 function generateToken(userId) {
-  const payload = { userId, expires: Date.now() + 24 * 60 * 60 * 1e3 };
+  const payload = { userId, expires: Date.now() + SESSION_DURATION_HOURS * 60 * 60 * 1e3 };
   const payloadStr = base64url(JSON.stringify(payload));
   const signature = base64url(import_crypto.default.createHmac("sha256", JWT_SECRET).update(payloadStr).digest());
   return `${payloadStr}.${signature}`;
