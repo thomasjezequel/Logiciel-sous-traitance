@@ -186,9 +186,6 @@ export default function BillingPrintModal({
                 <span className="text-gray-400 font-medium col-span-1">Prix Unitaire :</span>
                 <span className="font-bold text-slate-900 col-span-2">{billing.prixUnitaire.toLocaleString("fr-FR")} € / {billing.uniteFacturee}</span>
 
-                <span className="text-gray-400 font-medium col-span-1">État :</span>
-                <span className="font-semibold text-slate-800 col-span-2">{billing.etatFacturation}</span>
-
                 <span className="text-gray-400 font-medium col-span-1">Date Facturation :</span>
                 <span className="font-semibold text-slate-800 col-span-2">{billing.dateFacturation ? new Date(billing.dateFacturation).toLocaleDateString("fr-FR") : "Non renseignée"}</span>
 
