@@ -156,20 +156,20 @@ export default function BillingPrintModal({
                 <span className="text-gray-400 font-medium col-span-1">Affaire :</span>
                 <span className="font-bold text-slate-900 col-span-2">{mainProject.nomAffaire}</span>
 
-                <span className="text-gray-400 font-medium col-span-1">N° de commande Client :</span>
+                <span className="text-gray-400 font-medium col-span-1">Réf. de commande {client?.nom || "Non spécifié"} :</span>
                 <span className="font-semibold text-slate-800 col-span-2">{mainProject.numCommande || "Non spécifié"}</span>
 
-                <span className="text-gray-400 font-medium col-span-1">Réf. Commande Sous-Traitant :</span>
+                <span className="text-gray-400 font-medium col-span-1">Réf. de commande {subcontractor?.nom || "Non spécifié"} :</span>
                 <span className="font-semibold text-indigo-700 col-span-2">{(mainProject as any).numCommandeSousTraitant || "Non spécifiée"}</span>
 
                 <span className="text-gray-400 font-medium col-span-1">Zone / Lot :</span>
                 <span className="font-semibold text-slate-700 col-span-2">{associatedProjects.map(ap => ap.nomZone).join(", ")}</span>
 
                 <span className="text-gray-400 font-medium col-span-1">Donneur d'Ordre :</span>
-                <span className="font-bold text-indigo-700 col-span-2">{client?.nom || "Non spécifié"}</span>
+                <span className="font-semibold text-slate-800 col-span-2">{client?.nom || "Non spécifié"}</span>
 
                 <span className="text-gray-400 font-medium col-span-1 border-t border-slate-100 pt-1.5 mt-1">Sous-traitant :</span>
-                <span className="font-semibold text-slate-800 col-span-2 border-t border-slate-100 pt-1.5 mt-1">{subcontractor?.nom || "Non spécifié"}</span>
+                <span className="font-semibold text-indigo-700 col-span-2 border-t border-slate-100 pt-1.5 mt-1">{subcontractor?.nom || "Non spécifié"}</span>
               </div>
             </div>
 
