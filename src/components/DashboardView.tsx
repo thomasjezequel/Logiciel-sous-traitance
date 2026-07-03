@@ -30,10 +30,12 @@ interface DashboardViewProps {
   onOpenPrestation: (project: Project) => void;
   onOpenBudgetRealise: (project: Project) => void;
   onOpenBillingPrint: (billing: Billing) => void;
-  // Callbacks pour l'édition (simple clic)
+ // Callbacks pour l'édition (simple clic)
   onEditProject: (project: Project) => void;
   onEditBudgetRealise: (project: Project) => void;
   onEditBilling: (billing: Billing) => void;
+  // Rôle de l'utilisateur connecté (pour griser les options selon les droits)
+  userRole: string;
 }
 
 // Type du menu contextuel : "print" (double-clic) ou "edit" (simple clic)
@@ -57,7 +59,8 @@ export default function DashboardView({
   onOpenBillingPrint,
   onEditProject,
   onEditBudgetRealise,
-  onEditBilling
+  onEditBilling,
+  userRole
 }: DashboardViewProps) {
   const [selectedSub, setSelectedSub] = useState<string>("");
   const [selectedClient, setSelectedClient] = useState<string>("");
@@ -603,20 +606,39 @@ export default function DashboardView({
             {contextMenu.type === "edit" ? "✏️ Éditer" : "🖨️ Imprimer"} — {contextMenu.project.nomAffaire} ({contextMenu.project.nomZone})
           </div>
 
-          {contextMenu.type === "edit" ? (
+{contextMenu.type === "edit" ? (
             /* ── Options d'ÉDITION ── */
             <>
+              {/* Bandeau avertissement Lecteur */}
+              {userRole === "Lecteur" && (
+                <div className="mx-2 mb-1 px-2.5 py-1.5 bg-teal-700/60 rounded-lg text-[10px] text-teal-100 font-semibold flex items-center gap-1.5">
+                  🔒 Mode lecture seule — édition non autorisée
+                </div>
+              )}
+
               <button
-                onClick={() => { onEditProject(contextMenu.project); setContextMenu(null); }}
-                className="w-full text-left px-3 py-2 hover:bg-teal-700 flex items-center gap-2.5 font-semibold text-white transition rounded-md mx-0.5"
+                onClick={() => { if (userRole !== "Lecteur") { onEditProject(contextMenu.project); setContextMenu(null); } }}
+                disabled={userRole === "Lecteur"}
+                className={`w-full text-left px-3 py-2 flex items-center gap-2.5 font-semibold transition rounded-md mx-0.5 ${
+                  userRole === "Lecteur"
+                    ? "text-teal-300/50 cursor-not-allowed opacity-50"
+                    : "hover:bg-teal-700 text-white cursor-pointer"
+                }`}
+                title={userRole === "Lecteur" ? "Accès en lecture seule" : ""}
               >
                 <FileSpreadsheet className="w-4 h-4 text-teal-200 shrink-0" />
                 Modifier l'affaire
               </button>
 
               <button
-                onClick={() => { onEditBudgetRealise(contextMenu.project); setContextMenu(null); }}
-                className="w-full text-left px-3 py-2 hover:bg-teal-700 flex items-center gap-2.5 font-semibold text-white transition rounded-md mx-0.5"
+                onClick={() => { if (userRole !== "Lecteur") { onEditBudgetRealise(contextMenu.project); setContextMenu(null); } }}
+                disabled={userRole === "Lecteur"}
+                className={`w-full text-left px-3 py-2 flex items-center gap-2.5 font-semibold transition rounded-md mx-0.5 ${
+                  userRole === "Lecteur"
+                    ? "text-teal-300/50 cursor-not-allowed opacity-50"
+                    : "hover:bg-teal-700 text-white cursor-pointer"
+                }`}
+                title={userRole === "Lecteur" ? "Accès en lecture seule" : ""}
               >
                 <BarChart3 className="w-4 h-4 text-teal-200 shrink-0" />
                 Modifier Budget / Réalisé
@@ -624,8 +646,14 @@ export default function DashboardView({
 
               {contextMenu.billing ? (
                 <button
-                  onClick={() => { onEditBilling(contextMenu.billing!); setContextMenu(null); }}
-                  className="w-full text-left px-3 py-2 hover:bg-teal-700 flex items-center gap-2.5 font-semibold text-white transition rounded-md mx-0.5"
+                  onClick={() => { if (userRole !== "Lecteur") { onEditBilling(contextMenu.billing!); setContextMenu(null); } }}
+                  disabled={userRole === "Lecteur"}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-2.5 font-semibold transition rounded-md mx-0.5 ${
+                    userRole === "Lecteur"
+                      ? "text-teal-300/50 cursor-not-allowed opacity-50"
+                      : "hover:bg-teal-700 text-white cursor-pointer"
+                  }`}
+                  title={userRole === "Lecteur" ? "Accès en lecture seule" : ""}
                 >
                   <Receipt className="w-4 h-4 text-teal-200 shrink-0" />
                   Modifier l'accord de facturation
