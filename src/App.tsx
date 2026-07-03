@@ -1331,6 +1331,18 @@ export default function App() {
                   setSelectedBillingForPrint(b);
                   setIsPrintBillingModalOpen(true);
                 }}
+                onEditProject={(p) => {
+                  setSelectedProjectForEdit(p);
+                  setIsProjectModalOpen(true);
+                }}
+                onEditBudgetRealise={(p) => {
+                  setFinanceProject(p);
+                  setIsFinanceModalOpen(true);
+                }}
+                onEditBilling={(b) => {
+                  setSelectedBillingForEdit(b);
+                  setIsBillingModalOpen(true);
+                }}
               />
             )}
 
