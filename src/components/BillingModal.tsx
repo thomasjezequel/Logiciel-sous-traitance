@@ -13,6 +13,7 @@ interface BillingModalProps {
   budgets: any[];
   realises: any[];
   onSave: (data: Partial<Billing>) => Promise<void>;
+  userRole?: string;
 }
 
 export default function BillingModal({ 
@@ -495,11 +496,19 @@ export default function BillingModal({
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="px-5 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 shadow-xs flex items-center gap-2 transition"
+              disabled={loading || userRole === "Lecteur"}
+              title={userRole === "Lecteur" ? "Accès en lecture seule — modification non autorisée" : ""}
+              className={`px-5 py-2 text-sm font-semibold rounded-lg shadow-xs flex items-center gap-2 transition ${
+                userRole === "Lecteur"
+                  ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  : "bg-teal-600 hover:bg-teal-700 text-white"
+              }`}
             >
               <Save className="w-4 h-4" />
-              {loading ? "Enregistrement..." : "Valider la facture"}
+              {userRole === "Lecteur"
+                ? "🔒 Lecture seule — enregistrement non autorisé"
+                : loading ? "Enregistrement..." : "Valider la facture"
+              }
             </button>
           </div>
         </form>

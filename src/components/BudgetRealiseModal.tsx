@@ -12,6 +12,7 @@ interface BudgetRealiseModalProps {
   subcontractors: Subcontractor[];
   onSaveBudget: (id: string, data: Partial<Budget>) => Promise<void>;
   onSaveRealise: (id: string, data: Partial<Realise>) => Promise<void>;
+  userRole?: string;
 }
 
 export default function BudgetRealiseModal({
@@ -545,12 +546,17 @@ export default function BudgetRealiseModal({
               Annuler
             </button>
             <button
-              type="submit"
-              disabled={loading}
-              className="px-5 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 shadow-xs flex items-center gap-2 transition"
+  type="button"
+  disabled={isSaving || userRole === "Lecteur"}
+  title={userRole === "Lecteur" ? "Accès en lecture seule — modification non autorisée" : ""}
+  className={`px-5 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 transition ${
+    userRole === "Lecteur"
+      ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+      : "bg-teal-600 hover:bg-teal-700 text-white"
+  }`}
             >
               <Save className="w-4 h-4" />
-              {loading ? "Enregistrement..." : "Enregistrer les budgets & réalisés"}
+              {userRole === "Lecteur" ? "🔒 Lecture seule" : loading ? "Enregistrement..." : "Enregistrer les budgets & réalisés"}
             </button>
           </div>
         </form>

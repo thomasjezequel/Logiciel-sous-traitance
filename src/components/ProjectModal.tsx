@@ -37,10 +37,11 @@ interface ProjectModalProps {
   project?: Project; // If passed, we are in edit mode
   clients: Client[];
   subcontractors: Subcontractor[];
-  onSave: (data: Partial<Project>) => Promise<void>;
+onSave: (data: Partial<Project>) => Promise<void>;
+  userRole?: string;
 }
 
-export default function ProjectModal({ isOpen, onClose, project, clients, subcontractors, onSave }: ProjectModalProps) {
+export default function ProjectModal({ isOpen, onClose, project, clients, subcontractors, onSave , userRole }: ProjectModalProps) {
   const [formData, setFormData] = useState<Partial<Project>>({
     nomAffaire: "",
     nomZone: "",
@@ -550,13 +551,21 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
               Annuler
             </button>
             <button
-              type="submit"
-              disabled={loading}
-              className="px-5 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 shadow-xs flex items-center gap-2 transition"
-            >
-              <Save className="w-4 h-4" />
-              {loading ? "Enregistrement..." : project ? "Enregistrer les modifications" : "Créer le projet de fabrication"}
-            </button>
+  type="submit"
+  disabled={loading || userRole === "Lecteur"}
+  title={userRole === "Lecteur" ? "Accès en lecture seule — modification non autorisée" : ""}
+  className={`px-5 py-2 text-sm font-semibold rounded-lg shadow-xs flex items-center gap-2 transition ${
+    userRole === "Lecteur"
+      ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+      : "bg-teal-600 hover:bg-teal-700 text-white"
+  }`}
+>
+  <Save className="w-4 h-4" />
+  {userRole === "Lecteur"
+    ? "🔒 Lecture seule — enregistrement non autorisé"
+    : loading ? "Enregistrement..." : project ? "Enregistrer les modifications" : "Créer le projet de fabrication"
+  }
+</button>
           </div>
 
         </form>

@@ -2184,6 +2184,7 @@ export default function App() {
         clients={clients}
         subcontractors={subcontractors}
         onSave={handleSaveProject}
+        userRole={user?.role}
       />
 
       {/* 2. Billings Modal */}
@@ -2198,6 +2199,7 @@ export default function App() {
         budgets={budgets}
         realises={realises}
         onSave={handleSaveBilling}
+        userRole={user?.role}
       />
 
       {/* 3. Budget & Realised Modal */}
@@ -2218,6 +2220,7 @@ export default function App() {
             await api.updateRealise(id, data);
             await loadWorkspaceData();
           }}
+          userRole={user?.role}
         />
       )}
 
