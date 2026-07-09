@@ -26,7 +26,8 @@ export default function BillingModal({
   billings,
   budgets,
   realises,
-  onSave 
+ onSave,
+  userRole
 }: BillingModalProps) {
   const [formData, setFormData] = useState<Partial<Billing>>({
     projetId: "",
