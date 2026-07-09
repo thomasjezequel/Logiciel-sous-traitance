@@ -135,3 +135,43 @@ export interface Realise {
   achatsProtectionRealise?: number;
   achatsHeuresMO?: number; // hours of labour for H/T formula
 }
+// ─── INTERLOCUTEURS ───────────────────────────────────────────────────────────
+// Personnes physiques rattachées à un client ou sous-traitant
+export interface Interlocuteur {
+  id: string;
+  nom: string;
+  prenom: string;
+  email: string;
+  type: "client" | "subcontractor"; // rattachement
+  entiteId: string;                  // id du client ou sous-traitant
+  createdAt: string;
+}
+
+// ─── TÂCHES-TYPE ──────────────────────────────────────────────────────────────
+// Libellés prédéfinis pour la création rapide de tâches
+export interface TacheType {
+  id: string;
+  libelle: string;
+  createdAt: string;
+}
+
+// ─── TÂCHES ───────────────────────────────────────────────────────────────────
+export type TacheStatut = "A_FAIRE" | "EN_COURS" | "TERMINEE";
+
+export interface Relance {
+  id: string;
+  date: string;       // ISO string avec heure
+  note?: string;      // note optionnelle lors de la relance
+}
+
+export interface Tache {
+  id: string;
+  projetId: string;                 // affaire liée (obligatoire)
+  libelle: string;                  // tâche-type choisie ou texte libre
+  interlocuteurId: string;          // personne désignée
+  dateEcheance: string;             // date limite
+  statut: TacheStatut;
+  relances: Relance[];              // historique des relances
+  createdAt: string;
+  completedAt?: string;             // date de clôture si terminée
+}

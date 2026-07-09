@@ -261,5 +261,23 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ currentPassword, newPassword })
     });
-  }
+  },
+  
+  // ─── Interlocuteurs ───
+  getInterlocuteurs: () => fetchApi("/api/interlocuteurs"),
+  createInterlocuteur: (data: any) => fetchApi("/api/interlocuteurs", { method: "POST", body: JSON.stringify(data) }),
+  updateInterlocuteur: (id: string, data: any) => fetchApi(`/api/interlocuteurs/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteInterlocuteur: (id: string) => fetchApi(`/api/interlocuteurs/${id}`, { method: "DELETE" }),
+
+  // ─── Tâches-type ───
+  getTachesType: () => fetchApi("/api/taches-type"),
+  createTacheType: (libelle: string) => fetchApi("/api/taches-type", { method: "POST", body: JSON.stringify({ libelle }) }),
+  deleteTacheType: (id: string) => fetchApi(`/api/taches-type/${id}`, { method: "DELETE" }),
+
+  // ─── Tâches ───
+  getTaches: () => fetchApi("/api/taches"),
+  createTache: (data: any) => fetchApi("/api/taches", { method: "POST", body: JSON.stringify(data) }),
+  updateTache: (id: string, data: any) => fetchApi(`/api/taches/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  relancerTache: (id: string, note?: string) => fetchApi(`/api/taches/${id}/relance`, { method: "POST", body: JSON.stringify({ note }) }),
+  deleteTache: (id: string) => fetchApi(`/api/taches/${id}`, { method: "DELETE" }),
 };

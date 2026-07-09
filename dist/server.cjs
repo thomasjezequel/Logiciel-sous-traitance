@@ -1396,6 +1396,199 @@ app.put("/api/auth/change-password", authenticate, async (req, res) => {
     res.status(500).json({ error: "Erreur serveur lors du changement de mot de passe." });
   }
 });
+app.get("/api/interlocuteurs", authenticate, (req, res) => {
+  res.json(db.interlocuteurs || []);
+});
+app.post("/api/interlocuteurs", authenticate, requireWritePermission, (req, res) => {
+  const { nom, prenom, email, type, entiteId } = req.body;
+  if (!nom || !prenom || !email || !type || !entiteId) {
+    res.status(400).json({ error: "Tous les champs sont requis." });
+    return;
+  }
+  const newItem = {
+    id: "int_" + Math.random().toString(36).substring(2, 9),
+    nom,
+    prenom,
+    email,
+    type,
+    entiteId,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  if (!db.interlocuteurs) db.interlocuteurs = [];
+  db.interlocuteurs.push(newItem);
+  saveDatabase();
+  syncToFirestore("interlocuteurs", newItem.id, newItem);
+  res.json(newItem);
+});
+app.put("/api/interlocuteurs/:id", authenticate, requireWritePermission, (req, res) => {
+  const { id } = req.params;
+  const list = db.interlocuteurs || [];
+  const item = list.find((i) => i.id === id);
+  if (!item) {
+    res.status(404).json({ error: "Interlocuteur introuvable" });
+    return;
+  }
+  const { nom, prenom, email, type, entiteId } = req.body;
+  if (nom !== void 0) item.nom = nom;
+  if (prenom !== void 0) item.prenom = prenom;
+  if (email !== void 0) item.email = email;
+  if (type !== void 0) item.type = type;
+  if (entiteId !== void 0) item.entiteId = entiteId;
+  saveDatabase();
+  syncToFirestore("interlocuteurs", item.id, item);
+  res.json(item);
+});
+app.delete("/api/interlocuteurs/:id", authenticate, requireWritePermission, (req, res) => {
+  const list = db.interlocuteurs || [];
+  const index = list.findIndex((i) => i.id === req.params.id);
+  if (index === -1) {
+    res.status(404).json({ error: "Interlocuteur introuvable" });
+    return;
+  }
+  const actor = req.user;
+  const deleted = list[index];
+  list.splice(index, 1);
+  db.interlocuteurs = list;
+  saveDatabase();
+  deleteFromFirestore("interlocuteurs", req.params.id);
+  logAudit(actor, "Suppression d'interlocuteur", `${deleted.prenom} ${deleted.nom} (${deleted.email})`);
+  res.json({ success: true });
+});
+app.get("/api/taches-type", authenticate, (req, res) => {
+  res.json(db.tachesType || []);
+});
+app.post("/api/taches-type", authenticate, requireAdmin, (req, res) => {
+  const { libelle } = req.body;
+  if (!libelle?.trim()) {
+    res.status(400).json({ error: "Le libell\xE9 est requis." });
+    return;
+  }
+  if (!db.tachesType) db.tachesType = [];
+  if (db.tachesType.some((t) => t.libelle.toLowerCase() === libelle.trim().toLowerCase())) {
+    res.status(400).json({ error: "Ce libell\xE9 existe d\xE9j\xE0." });
+    return;
+  }
+  const newItem = {
+    id: "tt_" + Math.random().toString(36).substring(2, 9),
+    libelle: libelle.trim(),
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  db.tachesType.push(newItem);
+  saveDatabase();
+  syncToFirestore("metadata", "tachesType", { list: db.tachesType });
+  res.json(newItem);
+});
+app.delete("/api/taches-type/:id", authenticate, requireAdmin, (req, res) => {
+  const list = db.tachesType || [];
+  const index = list.findIndex((t) => t.id === req.params.id);
+  if (index === -1) {
+    res.status(404).json({ error: "T\xE2che-type introuvable" });
+    return;
+  }
+  list.splice(index, 1);
+  db.tachesType = list;
+  saveDatabase();
+  syncToFirestore("metadata", "tachesType", { list });
+  res.json({ success: true });
+});
+app.get("/api/taches", authenticate, (req, res) => {
+  const user = req.user;
+  const all = db.taches || [];
+  if (!hasAnyRestriction(user)) {
+    res.json(all);
+    return;
+  }
+  const accessibleIds = new Set(getAccessibleProjects(user).map((p) => p.id));
+  res.json(all.filter((t) => accessibleIds.has(t.projetId)));
+});
+app.post("/api/taches", authenticate, requireWritePermission, (req, res) => {
+  const { projetId, libelle, interlocuteurId, dateEcheance } = req.body;
+  if (!projetId || !libelle || !interlocuteurId || !dateEcheance) {
+    res.status(400).json({ error: "Tous les champs obligatoires doivent \xEAtre renseign\xE9s." });
+    return;
+  }
+  const user = req.user;
+  const project = db.projects.find((p) => p.id === projetId);
+  if (!userCanAccessProject(user, project)) {
+    res.status(403).json({ error: "Vous n'\xEAtes pas habilit\xE9 \xE0 cr\xE9er une t\xE2che pour cette affaire." });
+    return;
+  }
+  if (!db.taches) db.taches = [];
+  const newTache = {
+    id: "tch_" + Math.random().toString(36).substring(2, 9),
+    projetId,
+    libelle,
+    interlocuteurId,
+    dateEcheance,
+    statut: "A_FAIRE",
+    relances: [],
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  db.taches.push(newTache);
+  saveDatabase();
+  syncToFirestore("taches", newTache.id, newTache);
+  res.json(newTache);
+});
+app.put("/api/taches/:id", authenticate, requireWritePermission, (req, res) => {
+  const list = db.taches || [];
+  const tache = list.find((t) => t.id === req.params.id);
+  if (!tache) {
+    res.status(404).json({ error: "T\xE2che introuvable" });
+    return;
+  }
+  const user = req.user;
+  const project = db.projects.find((p) => p.id === tache.projetId);
+  if (!userCanAccessProject(user, project)) {
+    res.status(403).json({ error: "Acc\xE8s non autoris\xE9." });
+    return;
+  }
+  const { libelle, interlocuteurId, dateEcheance, statut } = req.body;
+  if (libelle !== void 0) tache.libelle = libelle;
+  if (interlocuteurId !== void 0) tache.interlocuteurId = interlocuteurId;
+  if (dateEcheance !== void 0) tache.dateEcheance = dateEcheance;
+  if (statut !== void 0) {
+    tache.statut = statut;
+    if (statut === "TERMINEE" && !tache.completedAt) tache.completedAt = (/* @__PURE__ */ new Date()).toISOString();
+    if (statut !== "TERMINEE") tache.completedAt = void 0;
+  }
+  saveDatabase();
+  syncToFirestore("taches", tache.id, tache);
+  res.json(tache);
+});
+app.post("/api/taches/:id/relance", authenticate, requireWritePermission, (req, res) => {
+  const list = db.taches || [];
+  const tache = list.find((t) => t.id === req.params.id);
+  if (!tache) {
+    res.status(404).json({ error: "T\xE2che introuvable" });
+    return;
+  }
+  const relance = {
+    id: "rel_" + Math.random().toString(36).substring(2, 9),
+    date: (/* @__PURE__ */ new Date()).toISOString(),
+    note: req.body.note || ""
+  };
+  if (!tache.relances) tache.relances = [];
+  tache.relances.push(relance);
+  saveDatabase();
+  syncToFirestore("taches", tache.id, tache);
+  res.json(tache);
+});
+app.delete("/api/taches/:id", authenticate, requireWritePermission, (req, res) => {
+  const list = db.taches || [];
+  const index = list.findIndex((t) => t.id === req.params.id);
+  if (index === -1) {
+    res.status(404).json({ error: "T\xE2che introuvable" });
+    return;
+  }
+  const actor = req.user;
+  const deleted = list[index];
+  list.splice(index, 1);
+  db.taches = list;
+  saveDatabase();
+  deleteFromFirestore("taches", req.params.id);
+  logAudit(actor, "Suppression de t\xE2che", `${deleted.libelle} (affaire: ${deleted.projetId})`);
+  res.json({ success: true });
+});
 app.get("/api/audit-log", authenticate, requireAdmin, (req, res) => {
   const sorted = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   res.json(sorted);
