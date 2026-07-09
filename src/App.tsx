@@ -10,7 +10,10 @@ import {
   Budget, 
   Realise,
   ProjectStatus,
-  BillingStatus
+  BillingStatus,
+  Interlocuteur,
+  Tache,
+  TacheType
 } from "./types";
 import { api } from "./lib/api";
 import * as XLSX from "xlsx";
@@ -35,7 +38,10 @@ import {
   Info,
   AlertTriangle,
   Eye,
-  EyeOff
+  EyeOff,
+  ListTodo,
+  Mail,
+  Phone
 } from "lucide-react";
 
 // Sub-components
@@ -50,6 +56,8 @@ import DashboardView from "./components/DashboardView";
 import ProfileView from "./components/ProfileView";
 import BillingPrintModal from "./components/BillingPrintModal";
 import BudgetRealisePrintModal from "./components/BudgetRealisePrintModal";
+import TasksView from "./components/TasksView";
+import ContactModal from "./components/ContactModal";
 
 // Helper générique d'export Excel (SheetJS)
 const exportToExcel = (data: Record<string, any>[], fileName: string, sheetName: string = "Feuille1") => {
@@ -84,10 +92,17 @@ export default function App() {
   const [billings, setBillings] = useState<Billing[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [realises, setRealises] = useState<Realise[]>([]);
+  const [interlocuteurs, setInterlocuteurs] = useState<Interlocuteur[]>([]);
+  const [taches, setTaches] = useState<Tache[]>([]);
+  const [tachesType, setTachesType] = useState<TacheType[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
 
   // Layout active tab
-  const [activeTab, setActiveTab] = useState<"dashboard" | "projects" | "budgets_realises" | "billings" | "directory" | "profil">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "projects" | "budgets_realises" | "billings" | "directory" | "tasks" | "profil">("dashboard");
+
+  // Modal interlocuteur
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [selectedContactForEdit, setSelectedContactForEdit] = useState<Interlocuteur | undefined>(undefined);
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState("");
@@ -256,14 +271,17 @@ export default function App() {
     if (!user || user.status !== UserStatus.APPROVED) return;
     try {
       setDataLoading(true);
-      const [p, c, s, b, bd, r, to] = await Promise.all([
+      const [p, c, s, b, bd, r, to, inter, tch, tt] = await Promise.all([
         api.getProjects(),
         api.getClients(),
         api.getSubcontractors(),
         api.getBillings(),
         api.getBudgets(),
         api.getRealises(),
-        api.getTypesOuvrage()
+        api.getTypesOuvrage(),
+        (api as any).getInterlocuteurs(),
+        (api as any).getTaches(),
+        (api as any).getTachesType()
       ]);
       setProjects(p);
       setClients(c);
@@ -272,6 +290,9 @@ export default function App() {
       setBudgets(bd);
       setRealises(r);
       setTypesOuvrage(to);
+      setInterlocuteurs(inter || []);
+      setTaches(tch || []);
+      setTachesType(tt || []);
     } catch (err: any) {
       console.error("Échec du chargement des bases :", err);
     } finally {
@@ -383,6 +404,56 @@ export default function App() {
     await api.updateBudget(budgetId, bUpdate);
     await api.updateRealise(realiseId, rUpdate);
     await loadWorkspaceData();
+  };
+
+  // ── Handlers Interlocuteurs ──────────────────────────────────────────────
+  const handleSaveContact = async (data: Partial<Interlocuteur>) => {
+    if (selectedContactForEdit) {
+      await (api as any).updateInterlocuteur(selectedContactForEdit.id, data);
+    } else {
+      await (api as any).createInterlocuteur(data);
+    }
+    await loadWorkspaceData();
+  };
+
+  const handleDeleteContact = async (id: string, nom: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Supprimer l'interlocuteur",
+      message: `Confirmez-vous la suppression de "${nom}" ? Cet interlocuteur ne sera plus disponible dans les tâches.`,
+      onConfirm: async () => {
+        await (api as any).deleteInterlocuteur(id);
+        await loadWorkspaceData();
+      }
+    });
+  };
+
+  // ── Handlers Tâches ──────────────────────────────────────────────────────
+  const handleSaveTache = async (data: any) => {
+    await (api as any).createTache(data);
+    await loadWorkspaceData();
+  };
+
+  const handleUpdateTache = async (id: string, data: any) => {
+    await (api as any).updateTache(id, data);
+    await loadWorkspaceData();
+  };
+
+  const handleRelancerTache = async (id: string, note?: string) => {
+    await (api as any).relancerTache(id, note);
+    await loadWorkspaceData();
+  };
+
+  const handleDeleteTache = async (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Supprimer la tâche",
+      message: "Confirmez-vous la suppression définitive de cette tâche et de son historique de relances ?",
+      onConfirm: async () => {
+        await (api as any).deleteTache(id);
+        await loadWorkspaceData();
+      }
+    });
   };
 
   const handleSaveClientSub = async (type: "client" | "subcontractor", data: any) => {
@@ -1060,6 +1131,18 @@ export default function App() {
               👥 Annuaire
             </button>
             <button
+              onClick={() => setActiveTab("tasks")}
+              className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition flex items-center gap-1.5 ${activeTab === "tasks" ? "bg-slate-900 text-white shadow-xs" : "text-gray-600 hover:bg-slate-100 hover:text-slate-900"}`}
+            >
+              <ListTodo className="w-4 h-4" />
+              Tâches
+              {taches.filter(t => t.statut !== "TERMINEE").length > 0 && (
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${taches.some(t => t.statut !== "TERMINEE" && new Date(t.dateEcheance) < new Date()) ? "bg-red-500 text-white" : "bg-indigo-100 text-indigo-700"}`}>
+                  {taches.filter(t => t.statut !== "TERMINEE").length}
+                </span>
+              )}
+            </button>
+            <button
               onClick={() => setActiveTab("profil")}
               className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition ${activeTab === "profil" ? "bg-slate-900 text-white shadow-xs" : "text-gray-600 hover:bg-slate-100 hover:text-slate-900"}`}
             >
@@ -1081,7 +1164,7 @@ export default function App() {
         </div>
 
         {/* Global Multi-Filter Tool - Not applicable to Admin panel or Profil */}
-        {activeTab !== "dashboard" && activeTab !== "profil" && activeTab !== ("admin_users" as any) && (
+        {activeTab !== "dashboard" && activeTab !== "profil" && activeTab !== "tasks" && activeTab !== ("admin_users" as any) && (
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block font-mono">⚡ Filtres généraux de recherche avancée :</span>
             <div className={`grid grid-cols-1 ${activeTab === "billings" || activeTab === "projects" ? "md:grid-cols-4" : "md:grid-cols-6"} gap-3`}>
@@ -2156,7 +2239,103 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* ── Interlocuteurs ── */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden md:col-span-2">
+                  <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <Phone className="w-4 h-4 text-rose-600" />
+                        Interlocuteurs
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-1">Personnes physiques rattachées à un client ou sous-traitant — utilisées pour l'attribution des tâches</p>
+                    </div>
+                    {isWritable && (
+                      <button
+                        onClick={() => { setSelectedContactForEdit(undefined); setIsContactModalOpen(true); }}
+                        className="bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs py-1.5 px-3 rounded flex items-center gap-1 transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Ajouter
+                      </button>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto">
+                    {interlocuteurs.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-gray-400">Aucun interlocuteur enregistré. Ajoutez les contacts de vos clients et sous-traitants.</div>
+                    ) : (
+                      <table className="w-full text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50/50 text-gray-500 font-bold text-[11px] uppercase tracking-wider">
+                            <th className="px-4 py-2.5">Nom / Prénom</th>
+                            <th className="px-4 py-2.5">Email</th>
+                            <th className="px-4 py-2.5">Rattachement</th>
+                            <th className="px-4 py-2.5">Entité</th>
+                            {isWritable && <th className="px-4 py-2.5 text-right">Actions</th>}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {[...interlocuteurs]
+                            .sort((a, b) => a.nom.localeCompare(b.nom, "fr"))
+                            .map(i => {
+                              const entite = i.type === "client"
+                                ? clients.find(c => c.id === i.entiteId)?.nom
+                                : subcontractors.find(s => s.id === i.entiteId)?.nom;
+                              return (
+                                <tr key={i.id} className="hover:bg-slate-50/60 transition">
+                                  <td className="px-4 py-2.5 font-semibold text-slate-900">{i.prenom} {i.nom}</td>
+                                  <td className="px-4 py-2.5 text-xs text-slate-500 font-mono">
+                                    <a href={`mailto:${i.email}`} className="hover:text-teal-600 hover:underline flex items-center gap-1">
+                                      <Mail className="w-3 h-3" />
+                                      {i.email}
+                                    </a>
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${i.type === "client" ? "bg-teal-50 text-teal-800" : "bg-indigo-50 text-indigo-800"}`}>
+                                      {i.type === "client" ? "Client" : "Sous-traitant"}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-xs font-semibold text-slate-700">{entite || "Inconnu"}</td>
+                                  {isWritable && (
+                                    <td className="px-4 py-2.5 text-right">
+                                      <div className="flex items-center justify-end gap-1">
+                                        <button onClick={() => { setSelectedContactForEdit(i); setIsContactModalOpen(true); }}
+                                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded" title="Modifier">
+                                          <Edit className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button onClick={() => handleDeleteContact(i.id, `${i.prenom} ${i.nom}`)}
+                                          className="p-1.5 text-slate-400 hover:text-red-500 rounded" title="Supprimer">
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+
               </div>
+            )}
+
+            {/* ── Onglet Tâches ── */}
+            {activeTab === "tasks" && (
+              <TasksView
+                taches={taches}
+                tachesType={tachesType}
+                projects={permittedProjects}
+                interlocuteurs={interlocuteurs}
+                clients={clients}
+                subcontractors={subcontractors}
+                onSave={handleSaveTache}
+                onUpdate={handleUpdateTache}
+                onRelancer={handleRelancerTache}
+                onDelete={handleDeleteTache}
+                isWritable={isWritable}
+              />
             )}
 
             {/* Profil panel view */}
@@ -2296,6 +2475,16 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* ContactModal */}
+      <ContactModal
+        isOpen={isContactModalOpen}
+        onClose={() => setIsContactModalOpen(false)}
+        interlocuteur={selectedContactForEdit}
+        clients={permittedClients}
+        subcontractors={subcontractors}
+        onSave={handleSaveContact}
+      />
 
       {/* Footer copyright */}
       <footer className="bg-white border-t border-gray-200 py-4 text-center text-xs text-gray-400 mt-12 print:hidden font-mono">
