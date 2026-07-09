@@ -1400,9 +1400,9 @@ app.get("/api/interlocuteurs", authenticate, (req, res) => {
   res.json(db.interlocuteurs || []);
 });
 app.post("/api/interlocuteurs", authenticate, requireWritePermission, (req, res) => {
-  const { nom, prenom, email, type, entiteId } = req.body;
-  if (!nom || !prenom || !email || !type || !entiteId) {
-    res.status(400).json({ error: "Tous les champs sont requis." });
+  const { nom, prenom, email, type, entiteId, entites } = req.body;
+  if (!nom || !prenom || !email) {
+    res.status(400).json({ error: "Nom, pr\xE9nom et email sont requis." });
     return;
   }
   const newItem = {
@@ -1410,8 +1410,9 @@ app.post("/api/interlocuteurs", authenticate, requireWritePermission, (req, res)
     nom,
     prenom,
     email,
-    type,
-    entiteId,
+    type: type || (entites?.[0]?.type ?? "client"),
+    entiteId: entiteId || entites?.[0]?.entiteId || "",
+    entites: Array.isArray(entites) ? entites : type && entiteId ? [{ type, entiteId }] : [],
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   if (!db.interlocuteurs) db.interlocuteurs = [];
@@ -1428,12 +1429,13 @@ app.put("/api/interlocuteurs/:id", authenticate, requireWritePermission, (req, r
     res.status(404).json({ error: "Interlocuteur introuvable" });
     return;
   }
-  const { nom, prenom, email, type, entiteId } = req.body;
+  const { nom, prenom, email, type, entiteId, entites } = req.body;
   if (nom !== void 0) item.nom = nom;
   if (prenom !== void 0) item.prenom = prenom;
   if (email !== void 0) item.email = email;
   if (type !== void 0) item.type = type;
   if (entiteId !== void 0) item.entiteId = entiteId;
+  if (entites !== void 0) item.entites = entites;
   saveDatabase();
   syncToFirestore("interlocuteurs", item.id, item);
   res.json(item);

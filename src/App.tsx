@@ -2294,7 +2294,23 @@ export default function App() {
                                       {i.type === "client" ? "Client" : "Sous-traitant"}
                                     </span>
                                   </td>
-                                  <td className="px-4 py-2.5 text-xs font-semibold text-slate-700">{entite || "Inconnu"}</td>
+                                  <td className="px-4 py-2.5 text-xs font-semibold text-slate-700">
+                                    <div className="flex flex-wrap gap-1">
+                                      {(Array.isArray((i as any).entites) && (i as any).entites.length > 0
+                                        ? (i as any).entites
+                                        : [{ type: i.type, entiteId: i.entiteId }]
+                                      ).map((r: any, idx: number) => {
+                                        const nom = r.type === "client"
+                                          ? clients.find(c => c.id === r.entiteId)?.nom
+                                          : subcontractors.find(s => s.id === r.entiteId)?.nom;
+                                        return (
+                                          <span key={idx} className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.type === "client" ? "bg-teal-50 text-teal-800" : "bg-indigo-50 text-indigo-800"}`}>
+                                            {nom || "Inconnu"}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </td>
                                   {isWritable && (
                                     <td className="px-4 py-2.5 text-right">
                                       <div className="flex items-center justify-end gap-1">

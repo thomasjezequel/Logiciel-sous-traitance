@@ -1683,14 +1683,17 @@ app.get("/api/interlocuteurs", authenticate, (req, res) => {
 });
 
 app.post("/api/interlocuteurs", authenticate, requireWritePermission, (req, res) => {
-  const { nom, prenom, email, type, entiteId } = req.body;
-  if (!nom || !prenom || !email || !type || !entiteId) {
-    res.status(400).json({ error: "Tous les champs sont requis." });
+  const { nom, prenom, email, type, entiteId, entites } = req.body;
+  if (!nom || !prenom || !email) {
+    res.status(400).json({ error: "Nom, prénom et email sont requis." });
     return;
   }
   const newItem = {
     id: "int_" + Math.random().toString(36).substring(2, 9),
-    nom, prenom, email, type, entiteId,
+    nom, prenom, email,
+    type: type || (entites?.[0]?.type ?? "client"),
+    entiteId: entiteId || entites?.[0]?.entiteId || "",
+    entites: Array.isArray(entites) ? entites : (type && entiteId ? [{ type, entiteId }] : []),
     createdAt: new Date().toISOString()
   };
   if (!(db as any).interlocuteurs) (db as any).interlocuteurs = [];
@@ -1705,12 +1708,13 @@ app.put("/api/interlocuteurs/:id", authenticate, requireWritePermission, (req, r
   const list = (db as any).interlocuteurs || [];
   const item = list.find((i: any) => i.id === id);
   if (!item) { res.status(404).json({ error: "Interlocuteur introuvable" }); return; }
-  const { nom, prenom, email, type, entiteId } = req.body;
+  const { nom, prenom, email, type, entiteId, entites } = req.body;
   if (nom !== undefined) item.nom = nom;
   if (prenom !== undefined) item.prenom = prenom;
   if (email !== undefined) item.email = email;
   if (type !== undefined) item.type = type;
   if (entiteId !== undefined) item.entiteId = entiteId;
+  if (entites !== undefined) item.entites = entites;
   saveDatabase();
   syncToFirestore("interlocuteurs", item.id, item);
   res.json(item);
