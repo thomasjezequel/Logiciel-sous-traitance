@@ -1,0 +1,57 @@
+[33mc1959ac[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Etape 2 module taches : interlocuteurs, onglet Taches, TasksView, ContactModal
+[33mc262c22[m Etape 2A : gestion taches-type dans panneau admin
+[33m5440c1d[m Etape 1 module taches : types, routes API, interlocuteurs
+[33maf3fb52[m Fix destructuration userRole BillingModal
+[33me1825e2[m Fix destructuration userRole dans BudgetrealiseModal
+[33m5a5321c[m Bouton enregistrement grise pour les utilisateurs Lecteurs
+[33m78a24d8[m Grisage options edition pour utilisateurs Lecteurs sur tableau de bord
+[33m9c0531f[m Ajout options fiche prestation
+[33mac61305[m Ajout menu clic simple edition tableau de bord
+[33m084ef15[m Duree expiration session
+[33md784ece[m Modification impression etat sur accord de facturation
+[33mf777d8a[m Modification esthetique accord de facturation
+[33ma634c6b[m V3.1.2 deploy
+[33mb20fc5d[m Securite : restriction sous-traitants, helmet, CORS, journal d'audit
+[33mbb8ea45[m V3.1.1 deploy
+[33m119f202[m Renforcement securite : mots de passe chiffres, jetons signes, controle des habilitations cote serveur
+[33m2d1352d[m Modification fiche de prestation n° commande et texte PDC
+[33m710c9f2[m version 3.1.0 deploy
+[33mf7a429e[m Modification texte envoi fiche prestation par mail
+[33m33315a1[m double clic vers impression dans l onglet indicateurs et synthese
+[33ma950800[m ajout fonctionnalite sous traitant externe
+[33mc7f6083[m Modification filtres facturation et projet
+[33m6dd5ac0[m Tri alphabetique par nom affaire
+[33m089e578[m Ajout champ num commande ST
+[33md9110bf[m Modification modele impression accord facturation
+[33m5bb3d8e[m Ajout jalon fiche de prestation
+[33mb227549[m Tri par affaires sur modele d impression de synthese
+[33md405680[m Fix: poids utilise et poidsSousTraite non enregistres cote serveur
+[33md69649e[m Ajout archivageautomatique des affaires facturees
+[33m573c6e3[m Fix: allowedClientsIds manquant dans reponses login/me
+[33mc7ca424[m Ajout exports Excel Projets, Budgets-Realises, Facturation
+[33m57ed152[m Ajout bouton envoyer par mail fiche prestation
+[33mc0e7611[m Fix affichage poids référence taux de chute
+[33mdc04a7a[m fix sous totaux section 2 poids fabriqué
+[33m16853c3[m Fix logo + sous-totaux fiche impression dashboard
+[33m8af1815[m retire node_modules
+[33m3615de0[m checkbox sous-traitant externe
+[33ma094fcb[m gitignore node_modules definitif
+[33m6ca59fc[m logo 3cm impression
+[33me530f02[m retire node_modules
+[33mfba8515[m fix firestore sync undefined
+[33m4bb11c9[m retire node_modules
+[33m7789cb5[m firestore config depuis variable
+[33m5c44bb6[m retire node_modules
+[33m900676c[m logo sur impression
+[33mbd5d0b0[m impression A4
+[33mcd4e0ba[m impression A4
+[33m894275f[m impression A4
+[33m075759f[m remove node_modules from git
+[33m6e9879b[m fix esbuild dependency
+[33m23f729b[m rebuild with cors
+[33m3bea981[m disable build
+[33mffd9b8f[m retire dist
+[33m5e2d21b[m fix start script
+[33m6606933[m fix cors
+[33m45270c5[m retire node_modules
+[33mb8fb2b9[m premier commit
