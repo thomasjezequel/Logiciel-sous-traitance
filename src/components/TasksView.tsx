@@ -207,15 +207,38 @@ export default function TasksView({
   const handleEnvoiMail = (t: Tache) => {
     const interlocuteur = interlocuteurs.find(i => i.id === t.interlocuteurId);
     const projet = projects.find(p => p.id === t.projetId);
-    if (!interlocuteur) return;
-    const subject = encodeURIComponent(`[Tâche] ${t.libelle} — ${projet?.nomAffaire || ""} (${projet?.nomZone || ""})`);
-    const body = encodeURIComponent(
-      `Bonjour ${interlocuteur.prenom},\n\nUne nouvelle tâche vous a été attribuée :\n\n` +
-      `📋 Tâche : ${t.libelle}\n` +
-      `🏗️ Affaire : ${projet?.nomAffaire || ""} — ${projet?.nomZone || ""}\n` +
-      `📅 Échéance : ${new Date(t.dateEcheance).toLocaleDateString("fr-FR")}\n\n` +
-      `Merci de prendre en charge cette demande dans les meilleurs délais.\n\nCordialement`
+    if (!interlocuteur || !projet) return;
+
+    // Toutes les tâches actives du même projet ET même interlocuteur
+    const tachesGroupees = taches.filter(other =>
+      other.projetId === t.projetId &&
+      other.interlocuteurId === t.interlocuteurId &&
+      other.statut !== "TERMINEE"
+    ).sort((a, b) => new Date(a.dateEcheance).getTime() - new Date(b.dateEcheance).getTime());
+
+    const lignesTaches = tachesGroupees.map(tg => {
+      const desc = (tg as any).description;
+      return (
+        `📋 ${tg.libelle}\n` +
+        `   📅 Échéance : ${new Date(tg.dateEcheance).toLocaleDateString("fr-FR")}` +
+        (desc ? `\n   ℹ️ ${desc}` : "")
+      );
+    }).join("\n\n");
+
+    const subject = encodeURIComponent(
+      tachesGroupees.length > 1
+        ? `[Tâches] ${tachesGroupees.length} tâches — ${projet.nomAffaire} (${projet.nomZone})`
+        : `[Tâche] ${t.libelle} — ${projet.nomAffaire} (${projet.nomZone})`
     );
+
+    const body = encodeURIComponent(
+      `Bonjour ${interlocuteur.prenom},\n\n` +
+      `Voici ${tachesGroupees.length > 1 ? "l'ensemble des tâches qui vous sont attribuées" : "la tâche qui vous est attribuée"} ` +
+      `sur l'affaire ${projet.nomAffaire} — ${projet.nomZone} :\n\n` +
+      `${lignesTaches}\n\n` +
+      `Merci de prendre en charge ces demandes dans les meilleurs délais.\n\nCordialement`
+    );
+
     window.location.href = `mailto:${interlocuteur.email}?subject=${subject}&body=${body}`;
   };
 
