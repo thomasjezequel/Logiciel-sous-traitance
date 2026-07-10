@@ -546,8 +546,8 @@ export default function BudgetRealiseModal({
               Annuler
             </button>
             <button
-  type="button"
-  disabled={isSaving || userRole === "Lecteur"}
+  type="submit"
+  disabled={loading || userRole === "Lecteur"}
   title={userRole === "Lecteur" ? "Accès en lecture seule — modification non autorisée" : ""}
   className={`px-5 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 transition ${
     userRole === "Lecteur"

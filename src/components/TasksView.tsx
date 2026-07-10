@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Project, Client, Subcontractor, Interlocuteur, Tache, TacheType } from "../types";
 import {
-  Plus, Trash2, CheckCircle2, Clock, AlertTriangle, Mail,
-  RotateCcw, ChevronDown, ChevronUp, Eye, EyeOff, Calendar, User, Filter
+  Plus, Trash2, Mail, Edit,
+  RotateCcw, ChevronDown, ChevronUp, Eye, EyeOff, AlertTriangle, Clock, ListTodo
 } from "lucide-react";
 
 interface TasksViewProps {
@@ -39,6 +39,28 @@ export default function TasksView({
   const [expandedRelances, setExpandedRelances] = useState<Set<string>>(new Set());
   const [relanceNoteId, setRelanceNoteId] = useState<string | null>(null);
   const [relanceNote, setRelanceNote] = useState("");
+
+  // Édition inline d'une tâche existante
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<any>({});
+
+  const startEdit = (t: Tache) => {
+    setEditingId(t.id);
+    setEditForm({
+      libelle: t.libelle,
+      interlocuteurId: t.interlocuteurId,
+      dateEcheance: t.dateEcheance,
+      description: (t as any).description || ""
+    });
+  };
+
+  const cancelEdit = () => { setEditingId(null); setEditForm({}); };
+
+  const saveEdit = async (t: Tache) => {
+    await onUpdate(t.id, editForm);
+    setEditingId(null);
+    setEditForm({});
+  };
 
   // Formulaire de création
   const [form, setForm] = useState({
@@ -130,24 +152,54 @@ export default function TasksView({
   };
 
   const handleRelancer = async (t: Tache) => {
-    // 1. Enregistre la relance
-    await onRelancer(t.id, relanceNoteId === t.id ? relanceNote : undefined);
-    // 2. Ouvre la messagerie
     const interlocuteur = interlocuteurs.find(i => i.id === t.interlocuteurId);
     const projet = projects.find(p => p.id === t.projetId);
-    const relanceNum = (t.relances?.length || 0) + 1;
-    if (interlocuteur) {
-      const subject = encodeURIComponent(`[RELANCE ${relanceNum}] ${t.libelle} — ${projet?.nomAffaire || ""} (${projet?.nomZone || ""})`);
-      const body = encodeURIComponent(
-        `Bonjour ${interlocuteur.prenom},\n\nNous vous relançons concernant la tâche suivante :\n\n` +
-        `📋 Tâche : ${t.libelle}\n` +
-        `🏗️ Affaire : ${projet?.nomAffaire || ""} — ${projet?.nomZone || ""}\n` +
-        `📅 Échéance : ${new Date(t.dateEcheance).toLocaleDateString("fr-FR")}\n\n` +
-        `${relanceNote ? `Note : ${relanceNote}\n\n` : ""}` +
-        `Merci de nous tenir informés de l'avancement.\n\nCordialement`
-      );
-      window.location.href = `mailto:${interlocuteur.email}?subject=${subject}&body=${body}`;
-    }
+    if (!projet || !interlocuteur) return;
+
+    // Toutes les tâches actives du même projet ET même interlocuteur
+    const tachesGroupees = taches.filter(other =>
+      other.id === t.id || (
+        other.projetId === t.projetId &&
+        other.interlocuteurId === t.interlocuteurId &&
+        other.statut !== "TERMINEE"
+      )
+    );
+
+    // Enregistrer la relance sur chacune
+    const noteRelance = relanceNoteId === t.id ? relanceNote : undefined;
+    await Promise.all(tachesGroupees.map(tg => onRelancer(tg.id, noteRelance)));
+
+    // Numéro = max des relances existantes + 1
+    const maxRelances = Math.max(...tachesGroupees.map(tg => tg.relances?.length || 0));
+    const relanceNum = maxRelances + 1;
+
+    // Corps du mail groupé avec description si renseignée
+    const lignesTaches = tachesGroupees
+      .sort((a, b) => new Date(a.dateEcheance).getTime() - new Date(b.dateEcheance).getTime())
+      .map(tg => {
+        const desc = (tg as any).description;
+        return (
+          `📋 ${tg.libelle}\n` +
+          `   📅 Échéance : ${new Date(tg.dateEcheance).toLocaleDateString("fr-FR")}` +
+          (desc ? `\n   ℹ️ ${desc}` : "")
+        );
+      })
+      .join("\n\n");
+
+    const subject = tachesGroupees.length > 1
+      ? `[RELANCE ${relanceNum}] ${tachesGroupees.length} tâches — ${projet.nomAffaire} (${projet.nomZone})`
+      : `[RELANCE ${relanceNum}] ${t.libelle} — ${projet.nomAffaire} (${projet.nomZone})`;
+
+    const body = encodeURIComponent(
+      `Bonjour ${interlocuteur.prenom},\n\n` +
+      `Nous vous relançons concernant ${tachesGroupees.length > 1 ? "les tâches suivantes" : "la tâche suivante"} ` +
+      `sur l'affaire ${projet.nomAffaire} — ${projet.nomZone} :\n\n` +
+      `${lignesTaches}\n\n` +
+      `${noteRelance ? `Note : ${noteRelance}\n\n` : ""}` +
+      `Merci de nous tenir informés de l'avancement.\n\nCordialement`
+    );
+
+    window.location.href = `mailto:${interlocuteur.email}?subject=${encodeURIComponent(subject)}&body=${body}`;
     setRelanceNoteId(null);
     setRelanceNote("");
   };
@@ -444,6 +496,13 @@ export default function TasksView({
                             </button>
                           )}
                           {isWritable && (
+                            <button onClick={() => startEdit(t)}
+                              title="Modifier la tâche"
+                              className="p-1.5 text-slate-400 hover:text-amber-600 rounded hover:bg-amber-50 transition">
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {isWritable && (
                             <button onClick={() => onDelete(t.id)}
                               title="Supprimer la tâche"
                               className="p-1.5 text-slate-400 hover:text-red-500 rounded hover:bg-red-50 transition">
@@ -453,6 +512,61 @@ export default function TasksView({
                         </div>
                       </td>
                     </tr>
+
+                    {/* Ligne d'édition inline */}
+                    {editingId === t.id && (
+                      <tr key={`edit-${t.id}`} className="bg-amber-50/60 border-b border-amber-100">
+                        <td colSpan={7} className="px-4 py-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] font-bold text-amber-800 uppercase font-mono block mb-1">Tâche</label>
+                              <select value={editForm.libelle}
+                                onChange={e => setEditForm((prev: any) => ({ ...prev, libelle: e.target.value }))}
+                                className="w-full text-xs border border-amber-200 rounded-lg px-3 py-2 text-slate-800 focus:outline-amber-500 bg-white">
+                                {tachesType.map(tt => (
+                                  <option key={tt.id} value={tt.libelle}>{tt.libelle}</option>
+                                ))}
+                                <option value={editForm.libelle}>{editForm.libelle}</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-amber-800 uppercase font-mono block mb-1">Interlocuteur</label>
+                              <select value={editForm.interlocuteurId}
+                                onChange={e => setEditForm((prev: any) => ({ ...prev, interlocuteurId: e.target.value }))}
+                                className="w-full text-xs border border-amber-200 rounded-lg px-3 py-2 text-slate-800 focus:outline-amber-500 bg-white">
+                                {interlocuteurs.map(i => (
+                                  <option key={i.id} value={i.id}>{i.prenom} {i.nom}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-amber-800 uppercase font-mono block mb-1">Date d'échéance</label>
+                              <input type="date" value={editForm.dateEcheance}
+                                onChange={e => setEditForm((prev: any) => ({ ...prev, dateEcheance: e.target.value }))}
+                                className="w-full text-xs border border-amber-200 rounded-lg px-3 py-2 text-slate-800 focus:outline-amber-500 bg-white" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-amber-800 uppercase font-mono block mb-1">Description / Informations complémentaires</label>
+                              <input type="text" value={editForm.description}
+                                onChange={e => setEditForm((prev: any) => ({ ...prev, description: e.target.value }))}
+                                placeholder="Précisions, instructions..."
+                                className="w-full text-xs border border-amber-200 rounded-lg px-3 py-2 text-slate-800 focus:outline-amber-500 bg-white" />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2 mt-3">
+                            <button onClick={cancelEdit}
+                              className="text-xs text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition">
+                              Annuler
+                            </button>
+                            <button onClick={() => saveEdit(t)}
+                              className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+                              <Edit className="w-3 h-3" />
+                              Enregistrer les modifications
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
 
                     {/* Ligne de relance */}
                     {relanceNoteId === t.id && (

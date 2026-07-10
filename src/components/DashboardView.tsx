@@ -373,21 +373,49 @@ export default function DashboardView({
                 />
                 <button
                   onClick={async () => {
-                    await onRelancerTache(t.id, relanceNote || undefined);
                     const inter2 = interlocuteurs.find(i => i.id === t.interlocuteurId);
                     const proj2 = projects.find(p => p.id === t.projetId);
-                    if (inter2) {
-                      const relanceNum = (t.relances?.length || 0) + 1;
-                      const subject = encodeURIComponent(`[RELANCE ${relanceNum}] ${t.libelle} — ${proj2?.nomAffaire || ""}`);
-                      const body = encodeURIComponent(
-                        `Bonjour ${inter2.prenom},\n\nNous vous relançons concernant la tâche suivante :\n\n` +
-                        `📋 Tâche : ${t.libelle}\n` +
-                        `🏗️ Affaire : ${proj2?.nomAffaire || ""} — ${proj2?.nomZone || ""}\n` +
-                        `📅 Échéance : ${new Date(t.dateEcheance).toLocaleDateString("fr-FR")}\n\n` +
-                        `${relanceNote ? `Note : ${relanceNote}\n\n` : ""}Merci de nous tenir informés de l'avancement.\n\nCordialement`
-                      );
-                      window.location.href = `mailto:${inter2.email}?subject=${subject}&body=${body}`;
-                    }
+                    if (!inter2 || !proj2) return;
+
+                    const tachesGroupees = taches.filter(other =>
+                      other.id === t.id || (
+                        other.projetId === t.projetId &&
+                        other.interlocuteurId === t.interlocuteurId &&
+                        other.statut !== "TERMINEE"
+                      )
+                    );
+
+                    await Promise.all(tachesGroupees.map(tg => onRelancerTache(tg.id, relanceNote || undefined)));
+
+                    const maxRelances = Math.max(...tachesGroupees.map(tg => tg.relances?.length || 0));
+                    const relanceNum = maxRelances + 1;
+
+                    const lignesTaches = tachesGroupees
+                      .sort((a, b) => new Date(a.dateEcheance).getTime() - new Date(b.dateEcheance).getTime())
+                      .map(tg => {
+                        const desc = (tg as any).description;
+                        return (
+                          `📋 ${tg.libelle}\n` +
+                          `   📅 Échéance : ${new Date(tg.dateEcheance).toLocaleDateString("fr-FR")}` +
+                          (desc ? `\n   ℹ️ ${desc}` : "")
+                        );
+                      })
+                      .join("\n\n");
+
+                    const subject = tachesGroupees.length > 1
+                      ? `[RELANCE ${relanceNum}] ${tachesGroupees.length} tâches — ${proj2.nomAffaire} (${proj2.nomZone})`
+                      : `[RELANCE ${relanceNum}] ${t.libelle} — ${proj2.nomAffaire} (${proj2.nomZone})`;
+
+                    const body = encodeURIComponent(
+                      `Bonjour ${inter2.prenom},\n\n` +
+                      `Nous vous relançons concernant ${tachesGroupees.length > 1 ? "les tâches suivantes" : "la tâche suivante"} ` +
+                      `sur l'affaire ${proj2.nomAffaire} — ${proj2.nomZone} :\n\n` +
+                      `${lignesTaches}\n\n` +
+                      `${relanceNote ? `Note : ${relanceNote}\n\n` : ""}` +
+                      `Merci de nous tenir informés de l'avancement.\n\nCordialement`
+                    );
+
+                    window.location.href = `mailto:${inter2.email}?subject=${encodeURIComponent(subject)}&body=${body}`;
                     setRelanceNoteId(null);
                     setRelanceNote("");
                   }}
