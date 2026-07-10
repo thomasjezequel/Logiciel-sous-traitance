@@ -1521,7 +1521,7 @@ app.get("/api/taches", authenticate, (req, res) => {
   res.json(all.filter((t) => accessibleIds.has(t.projetId)));
 });
 app.post("/api/taches", authenticate, requireWritePermission, (req, res) => {
-  const { projetId, libelle, interlocuteurId, dateEcheance } = req.body;
+  const { projetId, libelle, interlocuteurId, dateEcheance, description } = req.body;
   if (!projetId || !libelle || !interlocuteurId || !dateEcheance) {
     res.status(400).json({ error: "Tous les champs obligatoires doivent \xEAtre renseign\xE9s." });
     return;
@@ -1539,6 +1539,7 @@ app.post("/api/taches", authenticate, requireWritePermission, (req, res) => {
     libelle,
     interlocuteurId,
     dateEcheance,
+    description: description || "",
     statut: "A_FAIRE",
     relances: [],
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -1561,10 +1562,11 @@ app.put("/api/taches/:id", authenticate, requireWritePermission, (req, res) => {
     res.status(403).json({ error: "Acc\xE8s non autoris\xE9." });
     return;
   }
-  const { libelle, interlocuteurId, dateEcheance, statut } = req.body;
+  const { libelle, interlocuteurId, dateEcheance, statut, description } = req.body;
   if (libelle !== void 0) tache.libelle = libelle;
   if (interlocuteurId !== void 0) tache.interlocuteurId = interlocuteurId;
   if (dateEcheance !== void 0) tache.dateEcheance = dateEcheance;
+  if (description !== void 0) tache.description = description;
   if (statut !== void 0) {
     tache.statut = statut;
     if (statut === "TERMINEE" && !tache.completedAt) tache.completedAt = (/* @__PURE__ */ new Date()).toISOString();

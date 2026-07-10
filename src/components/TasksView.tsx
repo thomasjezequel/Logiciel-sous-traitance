@@ -46,7 +46,8 @@ export default function TasksView({
     libelle: "",
     customLibelle: "",
     interlocuteurId: "",
-    dateEcheance: ""
+    dateEcheance: "",
+    description: ""
   });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -115,9 +116,10 @@ export default function TasksView({
         projetId: form.projetId,
         libelle: libelleFinal,
         interlocuteurId: form.interlocuteurId,
-        dateEcheance: form.dateEcheance
+        dateEcheance: form.dateEcheance,
+        description: form.description
       });
-      setForm({ projetId: "", libelle: "", customLibelle: "", interlocuteurId: "", dateEcheance: "" });
+      setForm({ projetId: "", libelle: "", customLibelle: "", interlocuteurId: "", dateEcheance: "", description: "" });
       setShowForm(false);
       setFormError(null);
     } catch (err: any) {
@@ -297,6 +299,14 @@ export default function TasksView({
                 onChange={e => setForm(prev => ({ ...prev, dateEcheance: e.target.value }))}
                 className="w-full text-sm border border-indigo-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-indigo-500 bg-white" />
             </div>
+            <div className="md:col-span-2">
+              <label className="text-xs font-semibold text-indigo-800 block mb-1">Description / Informations complémentaires</label>
+              <textarea value={form.description || ""}
+                onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
+                rows={2}
+                placeholder="Précisions, instructions, contexte..."
+                className="w-full text-sm border border-indigo-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-indigo-500 bg-white resize-none" />
+            </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => { setShowForm(false); setFormError(null); }}
@@ -379,7 +389,10 @@ export default function TasksView({
 
                       {/* Tâche */}
                       <td className="px-4 py-3">
-                        <span className="font-medium text-slate-800">{t.libelle}</span>
+                        <span className="font-medium text-slate-800 block">{t.libelle}</span>
+                        {(t as any).description && (
+                          <span className="text-[10px] text-slate-400 italic block mt-0.5">{(t as any).description}</span>
+                        )}
                       </td>
 
                       {/* Interlocuteur */}

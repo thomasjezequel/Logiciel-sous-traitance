@@ -1805,7 +1805,7 @@ app.get("/api/taches", authenticate, (req, res) => {
 });
 
 app.post("/api/taches", authenticate, requireWritePermission, (req, res) => {
-  const { projetId, libelle, interlocuteurId, dateEcheance } = req.body;
+  const { projetId, libelle, interlocuteurId, dateEcheance, description } = req.body;
   if (!projetId || !libelle || !interlocuteurId || !dateEcheance) {
     res.status(400).json({ error: "Tous les champs obligatoires doivent être renseignés." }); return;
   }
@@ -1818,6 +1818,7 @@ app.post("/api/taches", authenticate, requireWritePermission, (req, res) => {
   const newTache = {
     id: "tch_" + Math.random().toString(36).substring(2, 9),
     projetId, libelle, interlocuteurId, dateEcheance,
+    description: description || "",
     statut: "A_FAIRE",
     relances: [],
     createdAt: new Date().toISOString()
@@ -1837,10 +1838,11 @@ app.put("/api/taches/:id", authenticate, requireWritePermission, (req, res) => {
   if (!userCanAccessProject(user, project)) {
     res.status(403).json({ error: "Accès non autorisé." }); return;
   }
-  const { libelle, interlocuteurId, dateEcheance, statut } = req.body;
+  const { libelle, interlocuteurId, dateEcheance, statut, description } = req.body;
   if (libelle !== undefined) tache.libelle = libelle;
   if (interlocuteurId !== undefined) tache.interlocuteurId = interlocuteurId;
   if (dateEcheance !== undefined) tache.dateEcheance = dateEcheance;
+  if (description !== undefined) tache.description = description;
   if (statut !== undefined) {
     tache.statut = statut;
     if (statut === "TERMINEE" && !tache.completedAt) tache.completedAt = new Date().toISOString();

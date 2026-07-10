@@ -337,6 +337,9 @@ export default function DashboardView({
               <div className="flex-1 min-w-0">
                 <span className="font-bold text-slate-900 block truncate">{t.libelle}</span>
                 <span className="text-slate-500 font-mono truncate block">{proj?.nomAffaire || "—"} · {proj?.nomZone || ""}</span>
+                {(t as any).description && (
+                  <span className="text-[10px] text-slate-400 italic block truncate mt-0.5">{(t as any).description}</span>
+                )}
               </div>
               {inter && (
                 <span className="text-slate-600 shrink-0 font-semibold hidden md:block">{inter.prenom} {inter.nom}</span>
