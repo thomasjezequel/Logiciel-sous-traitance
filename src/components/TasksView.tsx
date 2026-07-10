@@ -65,10 +65,19 @@ export default function TasksView({
   const getInterlocuteursForProject = (projetId: string) => {
     const proj = projects.find(p => p.id === projetId);
     if (!proj) return interlocuteurs;
-    return interlocuteurs.filter(i =>
-      (i.type === "client" && i.entiteId === proj.clientId) ||
-      (i.type === "subcontractor" && i.entiteId === proj.sousTraitantId)
-    );
+    return interlocuteurs.filter(i => {
+      const inter = i as any;
+      // Nouveau format : entites[] (multi-rattachements)
+      if (Array.isArray(inter.entites) && inter.entites.length > 0) {
+        return inter.entites.some((r: any) =>
+          (r.type === "client" && r.entiteId === proj.clientId) ||
+          (r.type === "subcontractor" && r.entiteId === proj.sousTraitantId)
+        );
+      }
+      // Ancien format : entiteId unique (compatibilité)
+      return (i.type === "client" && i.entiteId === proj.clientId) ||
+             (i.type === "subcontractor" && i.entiteId === proj.sousTraitantId);
+    });
   };
 
   // Filtrage des tâches affichées
