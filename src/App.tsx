@@ -894,7 +894,7 @@ export default function App() {
 
 
 
-          <p className="text-xs text-slate-500 mt-8 font-mono">FlowFab v3.1.3 • Pilotage de Fabrication</p>
+          <p className="text-xs text-slate-500 mt-8 font-mono">FlowFab v3.1.4 • Pilotage de Fabrication</p>
         </div>
 
         {/* Right Form Input Section */}
@@ -1407,6 +1407,8 @@ export default function App() {
                 clients={permittedClients}
                 taches={taches}
                 interlocuteurs={interlocuteurs}
+                onRelancerTache={handleRelancerTache}
+                isWritable={isWritable}
                 onOpenPrestation={(p) => setPrintableProject(p)}
                 onOpenBudgetRealise={(p) => {
                   setSelectedProjectForFinancePrint(p);
@@ -2506,7 +2508,7 @@ export default function App() {
 
       {/* Footer copyright */}
       <footer className="bg-white border-t border-gray-200 py-4 text-center text-xs text-gray-400 mt-12 print:hidden font-mono">
-        © {new Date().getFullYear()} FlowFab v3.1.3 • Système sécurisé de pilotage de production.
+        © {new Date().getFullYear()} FlowFab v3.1.4 • Système sécurisé de pilotage de production.
       </footer>
 
     </div>

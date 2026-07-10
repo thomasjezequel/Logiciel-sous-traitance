@@ -42,6 +42,9 @@ interface DashboardViewProps {
   onEditBilling: (billing: Billing) => void;
   // Rôle de l'utilisateur connecté (pour griser les options selon les droits)
   userRole: string;
+  // Callback relance tâche
+  onRelancerTache: (id: string, note?: string) => Promise<void>;
+  isWritable: boolean;
 }
 
 // Type du menu contextuel : "print" (double-clic) ou "edit" (simple clic)
@@ -62,6 +65,8 @@ export default function DashboardView({
   clients,
   taches,
   interlocuteurs,
+  onRelancerTache,
+  isWritable,
   onOpenPrestation,
   onOpenBudgetRealise,
   onOpenBillingPrint,
@@ -77,6 +82,8 @@ export default function DashboardView({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [filterTacheInterlocuteur, setFilterTacheInterlocuteur] = useState("");
+  const [relanceNoteId, setRelanceNoteId] = useState<string | null>(null);
+  const [relanceNote, setRelanceNote] = useState("");
 
   // Fermeture automatique du menu contextuel si on clique ailleurs
   useEffect(() => {
@@ -325,6 +332,7 @@ export default function DashboardView({
           const inter = interlocuteurs.find(i => i.id === t.interlocuteurId);
           const proj = projects.find(p => p.id === t.projetId);
           return (
+            <>
             <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs ${urgent ? "bg-red-50 border border-red-200" : "bg-amber-50/50 border border-amber-100"}`}>
               <div className={`w-2 h-2 rounded-full shrink-0 ${urgent ? "bg-red-500 animate-pulse" : "bg-amber-400"}`} />
               <div className="flex-1 min-w-0">
@@ -343,7 +351,55 @@ export default function DashboardView({
                   <Mail className="w-3.5 h-3.5" />
                 </button>
               )}
+              {inter && isWritable && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setRelanceNoteId(relanceNoteId === t.id ? null : t.id); setRelanceNote(""); }}
+                  title="Relancer l'interlocuteur"
+                  className={`p-1.5 rounded transition shrink-0 ${urgent ? "text-red-400 hover:text-red-700 hover:bg-red-100" : "text-amber-400 hover:text-amber-700 hover:bg-amber-100"}`}>
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
+            {relanceNoteId === t.id && (
+              <div className="mt-2 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                <input
+                  type="text"
+                  value={relanceNote}
+                  onChange={e => setRelanceNote(e.target.value)}
+                  placeholder="Note optionnelle..."
+                  className="flex-1 text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-indigo-500 bg-white"
+                />
+                <button
+                  onClick={async () => {
+                    await onRelancerTache(t.id, relanceNote || undefined);
+                    const inter2 = interlocuteurs.find(i => i.id === t.interlocuteurId);
+                    const proj2 = projects.find(p => p.id === t.projetId);
+                    if (inter2) {
+                      const relanceNum = (t.relances?.length || 0) + 1;
+                      const subject = encodeURIComponent(`[RELANCE ${relanceNum}] ${t.libelle} — ${proj2?.nomAffaire || ""}`);
+                      const body = encodeURIComponent(
+                        `Bonjour ${inter2.prenom},\n\nNous vous relançons concernant : ${t.libelle}\n\n` +
+                        `Affaire : ${proj2?.nomAffaire || ""} — ${proj2?.nomZone || ""}\n` +
+                        `Échéance : ${new Date(t.dateEcheance).toLocaleDateString("fr-FR")}\n\n` +
+                        `${relanceNote ? `Note : ${relanceNote}\n\n` : ""}Merci de nous tenir informés.\n\nCordialement`
+                      );
+                      window.location.href = `mailto:${inter2.email}?subject=${subject}&body=${body}`;
+                    }
+                    setRelanceNoteId(null);
+                    setRelanceNote("");
+                  }}
+                  className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Relancer + mail
+                </button>
+                <button onClick={() => setRelanceNoteId(null)}
+                  className="text-xs text-slate-400 hover:text-slate-700 px-2 py-1.5 rounded transition">
+                  ✕
+                </button>
+              </div>
+            )}
+            </>
           );
         };
 
