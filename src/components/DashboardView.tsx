@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Project, ProjectStatus, Budget, Realise, Billing, BillingStatus, Subcontractor, Client } from "../types";
+import { Project, ProjectStatus, Budget, Realise, Billing, BillingStatus, Subcontractor, Client, Tache, Interlocuteur } from "../types";
 import { 
   Hammer, 
   Scale, 
@@ -15,7 +15,11 @@ import {
   BarChart3,
   Receipt,
   Pencil,
-  FileSpreadsheet
+  FileSpreadsheet,
+  AlertTriangle,
+  Clock,
+  ListTodo,
+  Mail
 } from "lucide-react";
 import DashboardPrintModal from "./DashboardPrintModal";
 
@@ -26,6 +30,8 @@ interface DashboardViewProps {
   billings: Billing[];
   subcontractors: Subcontractor[];
   clients: Client[];
+  taches: Tache[];
+  interlocuteurs: Interlocuteur[];
   // Callbacks pour l'impression (double-clic)
   onOpenPrestation: (project: Project) => void;
   onOpenBudgetRealise: (project: Project) => void;
@@ -54,6 +60,8 @@ export default function DashboardView({
   billings,
   subcontractors,
   clients,
+  taches,
+  interlocuteurs,
   onOpenPrestation,
   onOpenBudgetRealise,
   onOpenBillingPrint,
@@ -68,6 +76,7 @@ export default function DashboardView({
   const [dateFin, setDateFin] = useState<string>("");
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [filterTacheInterlocuteur, setFilterTacheInterlocuteur] = useState("");
 
   // Fermeture automatique du menu contextuel si on clique ailleurs
   useEffect(() => {
@@ -276,6 +285,153 @@ export default function DashboardView({
           )}
         </div>
       </div>
+
+      {/* ── Bloc Tâches urgentes (en haut du tableau de bord) ── */}
+      {(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const tachesActives = taches.filter(t => {
+          if (t.statut === "TERMINEE") return false;
+          if (filterTacheInterlocuteur && t.interlocuteurId !== filterTacheInterlocuteur) return false;
+          return true;
+        });
+
+        const tachesEnRetard = tachesActives.filter(t => new Date(t.dateEcheance) < today);
+        const tachesAujourdhui = tachesActives.filter(t => {
+          const d = new Date(t.dateEcheance); d.setHours(0,0,0,0);
+          return d.getTime() === today.getTime();
+        });
+        const tachesAVenir = tachesActives.filter(t => new Date(t.dateEcheance) > today);
+
+        if (tachesActives.length === 0 && !filterTacheInterlocuteur) return null;
+
+        const handleMailTache = (t: Tache) => {
+          const inter = interlocuteurs.find(i => i.id === t.interlocuteurId);
+          const proj = projects.find(p => p.id === t.projetId);
+          if (!inter) return;
+          const subject = encodeURIComponent(`[Tâche] ${t.libelle} — ${proj?.nomAffaire || ""} (${proj?.nomZone || ""})`);
+          const body = encodeURIComponent(
+            `Bonjour ${inter.prenom},\n\nNous vous contactons concernant la tâche suivante :\n\n` +
+            `📋 Tâche : ${t.libelle}\n` +
+            `🏗️ Affaire : ${proj?.nomAffaire || ""} — ${proj?.nomZone || ""}\n` +
+            `📅 Échéance : ${new Date(t.dateEcheance).toLocaleDateString("fr-FR")}\n\n` +
+            `Merci de prendre en charge cette demande.\n\nCordialement`
+          );
+          window.location.href = `mailto:${inter.email}?subject=${subject}&body=${body}`;
+        };
+
+        const TacheRow = ({ t, urgent }: { t: Tache; urgent?: boolean }) => {
+          const inter = interlocuteurs.find(i => i.id === t.interlocuteurId);
+          const proj = projects.find(p => p.id === t.projetId);
+          return (
+            <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs ${urgent ? "bg-red-50 border border-red-200" : "bg-amber-50/50 border border-amber-100"}`}>
+              <div className={`w-2 h-2 rounded-full shrink-0 ${urgent ? "bg-red-500 animate-pulse" : "bg-amber-400"}`} />
+              <div className="flex-1 min-w-0">
+                <span className="font-bold text-slate-900 block truncate">{t.libelle}</span>
+                <span className="text-slate-500 font-mono truncate block">{proj?.nomAffaire || "—"} · {proj?.nomZone || ""}</span>
+              </div>
+              {inter && (
+                <span className="text-slate-600 shrink-0 font-semibold hidden md:block">{inter.prenom} {inter.nom}</span>
+              )}
+              <span className={`font-bold shrink-0 ${urgent ? "text-red-600" : "text-amber-700"}`}>
+                {new Date(t.dateEcheance).toLocaleDateString("fr-FR")}
+              </span>
+              {inter && (
+                <button onClick={() => handleMailTache(t)} title="Contacter par mail"
+                  className={`p-1.5 rounded transition shrink-0 ${urgent ? "text-red-400 hover:text-red-700 hover:bg-red-100" : "text-amber-400 hover:text-amber-700 hover:bg-amber-100"}`}>
+                  <Mail className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          );
+        };
+
+        return (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+            {/* En-tête avec filtre interlocuteur */}
+            <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <ListTodo className="w-5 h-5 text-indigo-600" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Tâches en cours
+                    {tachesEnRetard.length > 0 && (
+                      <span className="ml-2 text-[10px] font-bold bg-red-500 text-white px-2 py-0.5 rounded-full">
+                        {tachesEnRetard.length} en retard
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-[10px] text-slate-400">
+                    {tachesActives.length} tâche{tachesActives.length > 1 ? "s" : ""} active{tachesActives.length > 1 ? "s" : ""}
+                    {tachesAujourdhui.length > 0 && ` · ${tachesAujourdhui.length} aujourd'hui`}
+                    {tachesAVenir.length > 0 && ` · ${tachesAVenir.length} à venir`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <select value={filterTacheInterlocuteur} onChange={e => setFilterTacheInterlocuteur(e.target.value)}
+                  className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-indigo-500 bg-white">
+                  <option value="">Tous les interlocuteurs</option>
+                  {interlocuteurs.map(i => (
+                    <option key={i.id} value={i.id}>{i.prenom} {i.nom}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* En retard */}
+              {tachesEnRetard.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-red-600 uppercase tracking-wider font-mono">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    En retard — action urgente requise
+                  </div>
+                  {tachesEnRetard.sort((a,b) => new Date(a.dateEcheance).getTime() - new Date(b.dateEcheance).getTime()).map(t => (
+                    <TacheRow key={t.id} t={t} urgent />
+                  ))}
+                </div>
+              )}
+
+              {/* Aujourd'hui */}
+              {tachesAujourdhui.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-700 uppercase tracking-wider font-mono">
+                    <Clock className="w-3.5 h-3.5" />
+                    Échéance aujourd'hui
+                  </div>
+                  {tachesAujourdhui.map(t => (
+                    <TacheRow key={t.id} t={t} />
+                  ))}
+                </div>
+              )}
+
+              {/* À venir */}
+              {tachesAVenir.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                    <ListTodo className="w-3.5 h-3.5" />
+                    À venir
+                  </div>
+                  {tachesAVenir.sort((a,b) => new Date(a.dateEcheance).getTime() - new Date(b.dateEcheance).getTime()).slice(0,5).map(t => (
+                    <TacheRow key={t.id} t={t} />
+                  ))}
+                  {tachesAVenir.length > 5 && (
+                    <p className="text-[10px] text-slate-400 italic text-center pt-1">
+                      + {tachesAVenir.length - 5} tâche{tachesAVenir.length - 5 > 1 ? "s" : ""} supplémentaire{tachesAVenir.length - 5 > 1 ? "s" : ""} — voir l'onglet Tâches
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {tachesActives.length === 0 && (
+                <p className="text-xs text-slate-400 italic text-center py-2">Aucune tâche active{filterTacheInterlocuteur ? " pour cet interlocuteur" : ""}.</p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

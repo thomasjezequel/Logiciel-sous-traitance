@@ -1405,6 +1405,8 @@ export default function App() {
                 billings={permittedBillings}
                 subcontractors={subcontractors}
                 clients={permittedClients}
+                taches={taches}
+                interlocuteurs={interlocuteurs}
                 onOpenPrestation={(p) => setPrintableProject(p)}
                 onOpenBudgetRealise={(p) => {
                   setSelectedProjectForFinancePrint(p);
