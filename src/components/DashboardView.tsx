@@ -319,10 +319,9 @@ export default function DashboardView({
           if (!inter) return;
           const subject = encodeURIComponent(`[Tâche] ${t.libelle} — ${proj?.nomAffaire || ""} (${proj?.nomZone || ""})`);
           const body = encodeURIComponent(
-            `Bonjour ${inter.prenom},\n\nNous vous contactons concernant la tâche suivante :\n\n` +
-            `📋 Tâche : ${t.libelle}\n` +
-            `🏗️ Affaire : ${proj?.nomAffaire || ""} — ${proj?.nomZone || ""}\n` +
-            `📅 Échéance : ${new Date(t.dateEcheance).toLocaleDateString("fr-FR")}\n\n` +
+            `Bonjour ${inter.prenom},\n\nNous vous contactons concernant : ${t.libelle}\n\n` +
+            `Affaire : ${proj?.nomAffaire || ""} — ${proj?.nomZone || ""}\n` +
+            `Échéance : ${new Date(t.dateEcheance).toLocaleDateString("fr-FR")}\n\n` +
             `Merci de prendre en charge cette demande.\n\nCordialement`
           );
           window.location.href = `mailto:${inter.email}?subject=${subject}&body=${body}`;
@@ -378,10 +377,11 @@ export default function DashboardView({
                       const relanceNum = (t.relances?.length || 0) + 1;
                       const subject = encodeURIComponent(`[RELANCE ${relanceNum}] ${t.libelle} — ${proj2?.nomAffaire || ""}`);
                       const body = encodeURIComponent(
-                        `Bonjour ${inter2.prenom},\n\nNous vous relançons concernant : ${t.libelle}\n\n` +
-                        `Affaire : ${proj2?.nomAffaire || ""} — ${proj2?.nomZone || ""}\n` +
-                        `Échéance : ${new Date(t.dateEcheance).toLocaleDateString("fr-FR")}\n\n` +
-                        `${relanceNote ? `Note : ${relanceNote}\n\n` : ""}Merci de nous tenir informés.\n\nCordialement`
+                        `Bonjour ${inter2.prenom},\n\nNous vous relançons concernant la tâche suivante :\n\n` +
+                        `📋 Tâche : ${t.libelle}\n` +
+                        `🏗️ Affaire : ${proj2?.nomAffaire || ""} — ${proj2?.nomZone || ""}\n` +
+                        `📅 Échéance : ${new Date(t.dateEcheance).toLocaleDateString("fr-FR")}\n\n` +
+                        `${relanceNote ? `Note : ${relanceNote}\n\n` : ""}Merci de nous tenir informés de l'avancement.\n\nCordialement`
                       );
                       window.location.href = `mailto:${inter2.email}?subject=${subject}&body=${body}`;
                     }
