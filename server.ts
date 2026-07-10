@@ -305,6 +305,10 @@ function loadDatabase() {
         typesOuvrage: loaded.typesOuvrage || DEFAULT_DB.typesOuvrage,
         auditLog: loaded.auditLog || [],
       };
+      // Nouvelles collections (cast any car hors DatabaseSchema)
+      (db as any).interlocuteurs = loaded.interlocuteurs || [];
+      (db as any).tachesType = loaded.tachesType || [];
+      (db as any).taches = loaded.taches || [];
       console.log("Database successfully loaded from", DB_FILE);
     } else {
       saveDatabase();
@@ -454,6 +458,21 @@ async function loadDatabaseFromFirestore() {
       auditLog = auditDoc.data()?.entries;
     }
 
+    // ── Nouvelles collections : interlocuteurs, tachesType, taches ──
+    const interlocuteursSnap = await getDocs(collection(firestoreDb, "interlocuteurs"));
+    const interlocuteurs: any[] = [];
+    interlocuteursSnap.forEach((d) => interlocuteurs.push(d.data()));
+
+    const tachesSnap = await getDocs(collection(firestoreDb, "taches"));
+    const taches: any[] = [];
+    tachesSnap.forEach((d) => taches.push(d.data()));
+
+    const tachesTypeDoc = await getDoc(doc(firestoreDb, "metadata", "tachesType"));
+    let tachesType: any[] = [];
+    if (tachesTypeDoc.exists() && Array.isArray(tachesTypeDoc.data()?.list)) {
+      tachesType = tachesTypeDoc.data()?.list;
+    }
+
     // Seed if empty
     if (users.length === 0 && clients.length === 0 && projects.length === 0) {
       await seedFirestoreFromDefault();
@@ -473,6 +492,10 @@ async function loadDatabaseFromFirestore() {
       typesOuvrage,
       auditLog
     };
+    // Injecter les nouvelles collections dans db (cast any car pas dans DatabaseSchema)
+    (db as any).interlocuteurs = interlocuteurs;
+    (db as any).tachesType = tachesType;
+    (db as any).taches = taches;
     console.log("[Firebase] Successfully loaded database state from Firestore!");
     // Keep local backup up-to-date
     saveDatabase();

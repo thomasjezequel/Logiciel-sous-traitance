@@ -268,6 +268,9 @@ function loadDatabase() {
         typesOuvrage: loaded.typesOuvrage || DEFAULT_DB.typesOuvrage,
         auditLog: loaded.auditLog || []
       };
+      db.interlocuteurs = loaded.interlocuteurs || [];
+      db.tachesType = loaded.tachesType || [];
+      db.taches = loaded.taches || [];
       console.log("Database successfully loaded from", DB_FILE);
     } else {
       saveDatabase();
@@ -390,6 +393,17 @@ async function loadDatabaseFromFirestore() {
     if (auditDoc.exists() && Array.isArray(auditDoc.data()?.entries)) {
       auditLog = auditDoc.data()?.entries;
     }
+    const interlocuteursSnap = await (0, import_firestore.getDocs)((0, import_firestore.collection)(firestoreDb, "interlocuteurs"));
+    const interlocuteurs = [];
+    interlocuteursSnap.forEach((d) => interlocuteurs.push(d.data()));
+    const tachesSnap = await (0, import_firestore.getDocs)((0, import_firestore.collection)(firestoreDb, "taches"));
+    const taches = [];
+    tachesSnap.forEach((d) => taches.push(d.data()));
+    const tachesTypeDoc = await (0, import_firestore.getDoc)((0, import_firestore.doc)(firestoreDb, "metadata", "tachesType"));
+    let tachesType = [];
+    if (tachesTypeDoc.exists() && Array.isArray(tachesTypeDoc.data()?.list)) {
+      tachesType = tachesTypeDoc.data()?.list;
+    }
     if (users.length === 0 && clients.length === 0 && projects.length === 0) {
       await seedFirestoreFromDefault();
       await loadDatabaseFromFirestore();
@@ -406,6 +420,9 @@ async function loadDatabaseFromFirestore() {
       typesOuvrage,
       auditLog
     };
+    db.interlocuteurs = interlocuteurs;
+    db.tachesType = tachesType;
+    db.taches = taches;
     console.log("[Firebase] Successfully loaded database state from Firestore!");
     saveDatabase();
   } catch (err) {
