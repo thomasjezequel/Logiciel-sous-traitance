@@ -58,6 +58,7 @@ import BillingPrintModal from "./components/BillingPrintModal";
 import BudgetRealisePrintModal from "./components/BudgetRealisePrintModal";
 import TasksView from "./components/TasksView";
 import ContactModal from "./components/ContactModal";
+import CalendarView from "./components/CalendarView";
 
 // Helper générique d'export Excel (SheetJS)
 const exportToExcel = (data: Record<string, any>[], fileName: string, sheetName: string = "Feuille1") => {
@@ -98,7 +99,7 @@ export default function App() {
   const [dataLoading, setDataLoading] = useState(false);
 
   // Layout active tab
-  const [activeTab, setActiveTab] = useState<"dashboard" | "projects" | "budgets_realises" | "billings" | "directory" | "tasks" | "profil">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "projects" | "budgets_realises" | "billings" | "directory" | "tasks" | "calendar" | "profil">("dashboard");
 
   // Modal interlocuteur
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
@@ -1143,6 +1144,12 @@ export default function App() {
               )}
             </button>
             <button
+              onClick={() => setActiveTab("calendar")}
+              className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition flex items-center gap-1.5 ${activeTab === "calendar" ? "bg-slate-900 text-white shadow-xs" : "text-gray-600 hover:bg-slate-100 hover:text-slate-900"}`}
+            >
+              📅 Calendrier
+            </button>
+            <button
               onClick={() => setActiveTab("profil")}
               className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition ${activeTab === "profil" ? "bg-slate-900 text-white shadow-xs" : "text-gray-600 hover:bg-slate-100 hover:text-slate-900"}`}
             >
@@ -1164,7 +1171,7 @@ export default function App() {
         </div>
 
         {/* Global Multi-Filter Tool - Not applicable to Admin panel or Profil */}
-        {activeTab !== "dashboard" && activeTab !== "profil" && activeTab !== "tasks" && activeTab !== ("admin_users" as any) && (
+        {activeTab !== "dashboard" && activeTab !== "profil" && activeTab !== "tasks" && activeTab !== "calendar" && activeTab !== ("admin_users" as any) && (
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block font-mono">⚡ Filtres généraux de recherche avancée :</span>
             <div className={`grid grid-cols-1 ${activeTab === "billings" || activeTab === "projects" ? "md:grid-cols-4" : "md:grid-cols-6"} gap-3`}>
@@ -2355,6 +2362,17 @@ export default function App() {
                 onRelancer={handleRelancerTache}
                 onDelete={handleDeleteTache}
                 isWritable={isWritable}
+              />
+            )}
+
+            {/* ── Onglet Calendrier ── */}
+            {activeTab === "calendar" && (
+              <CalendarView
+                projects={permittedProjects}
+                billings={permittedBillings}
+                taches={taches}
+                clients={permittedClients}
+                subcontractors={subcontractors}
               />
             )}
 

@@ -359,7 +359,31 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
           <h2 className="text-sm font-bold text-teal-950 uppercase tracking-wide mb-3 font-mono">
             Délais de Livraison et Jalons Critères
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+            {/* Date Appro */}
+            <div className="bg-white print:bg-white p-3 rounded border border-blue-100 flex flex-col">
+              <span className="text-xs text-blue-600 uppercase tracking-widest block font-mono">Date d'Appro Matière</span>
+              <span className="text-base font-bold text-blue-800 mt-1">
+                {(project as any).dateAppro
+                  ? new Date((project as any).dateAppro).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+                  : "Non renseignée"
+                }
+              </span>
+            </div>
+
+            {/* Date Traçage */}
+            <div className="bg-white print:bg-white p-3 rounded border border-purple-100 flex flex-col">
+              <span className="text-xs text-purple-600 uppercase tracking-widest block font-mono">Date de Traçage / Lancement</span>
+              <span className="text-base font-bold text-purple-800 mt-1">
+                {(project as any).dateTracage
+                  ? new Date((project as any).dateTracage).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+                  : "Non renseignée"
+                }
+              </span>
+            </div>
+
+            {/* Livraison Protection */}
             <div className="bg-white print:bg-white p-3 rounded border border-teal-100 flex flex-col">
               <span className="text-xs text-gray-500 uppercase tracking-widest block font-mono">Délai de Livraison Site de Protection</span>
               <span className="text-base font-bold text-teal-800 mt-1">
@@ -369,7 +393,8 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
                 }
               </span>
             </div>
-            
+
+            {/* Livraison Chantier */}
             <div className="bg-white print:bg-white p-3 rounded border border-red-100 flex flex-col">
               <span className="text-xs text-red-500 uppercase tracking-widest block font-mono">Délai de Livraison sur Chantier</span>
               <span className="text-base font-bold text-red-700 mt-1">
@@ -379,6 +404,7 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
                 }
               </span>
             </div>
+
           </div>
         </div>
 
