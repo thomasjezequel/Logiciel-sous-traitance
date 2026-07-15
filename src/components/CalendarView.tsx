@@ -77,8 +77,8 @@ export default function CalendarView({ projects, billings, taches, clients, subc
     };
   };
 
-  // Génère et imprime le PDF
-  const handlePrint = () => {
+  // Génère et imprime le document
+  const handlePrint = async () => {
     const range = getPrintRange();
     if (!range.debut || !range.fin) return;
 
@@ -93,175 +93,205 @@ export default function CalendarView({ projects, billings, taches, clients, subc
       return true;
     }).sort((a, b) => a.date.localeCompare(b.date));
 
-    // Calcul nombre de jours
-    const nbJours = Math.ceil((new Date(range.fin).getTime() - new Date(range.debut).getTime()) / 86400000) + 1;
-    const isMonthView = printPeriod === "month" || nbJours > 14;
-
-    // Grouper par date pour la vue liste
+    // Grouper par date
     const byDate: Record<string, CalendarEvent[]> = {};
     filteredEvts.forEach(e => {
       if (!byDate[e.date]) byDate[e.date] = [];
       byDate[e.date].push(e);
     });
 
-    // Construire le HTML du document
-    let html = `
-      <html><head><meta charset="utf-8">
-      <style>
-        body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; margin: 0; }
-        h1 { font-size: 16px; font-weight: bold; margin-bottom: 4px; }
-        .subtitle { color: #64748b; font-size: 10px; margin-bottom: 20px; }
-        .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-        .legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; }
-        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    const dateGen = `${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
 
-        /* Vue liste */
-        .date-block { margin-bottom: 14px; }
-        .date-header { font-size: 11px; font-weight: bold; color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 6px; }
-        .event-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; border-radius: 4px; margin-bottom: 3px; }
-        .event-label { font-weight: bold; font-size: 10px; }
-        .event-project { font-size: 9px; color: #64748b; }
-        .event-type { font-size: 8px; font-weight: bold; padding: 1px 5px; border-radius: 10px; white-space: nowrap; }
+    // Couleurs par type
+    const getBg = (type: string) => ({ appro:"#dbeafe", tracage:"#f3e8ff", protection:"#ffedd5", livraison:"#ccfbf1", tache:"#e0e7ff", facturation:"#fef3c7" }[type] || "#f1f5f9");
+    const getFg = (type: string) => ({ appro:"#1d4ed8", tracage:"#7e22ce", protection:"#c2410c", livraison:"#0f766e", tache:"#4338ca", facturation:"#b45309" }[type] || "#334155");
+    const getTypeLabel = (type: string) => ({ appro:"Appro", tracage:"Traçage", protection:"Protection", livraison:"Livraison", tache:"Tâche", facturation:"Facturation" }[type] || type);
 
-        /* Vue grille */
-        .cal-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
-        .cal-header { background: #f1f5f9; text-align: center; padding: 4px; font-size: 9px; font-weight: bold; color: #64748b; }
-        .cal-week { background: #f8fafc; text-align: center; padding: 4px 2px; font-size: 9px; color: #94a3b8; font-weight: bold; }
-        .cal-day { border: 1px solid #e2e8f0; min-height: 70px; padding: 3px; vertical-align: top; }
-        .cal-day-empty { border: 1px solid #f1f5f9; min-height: 70px; background: #fafafa; }
-        .cal-day-num { font-size: 10px; font-weight: bold; color: #334155; margin-bottom: 2px; }
-        .cal-event { font-size: 8px; font-weight: bold; padding: 1px 3px; border-radius: 3px; margin-bottom: 1px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    // Logo FlowFab converti en base64 pour l'impression
+    const logoBase64 = await new Promise<string>((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => resolve(""); // fallback silencieux
+      img.src = "/src/assets/images/flowfab_logo_1780546723025.png";
+    });
+    const logoSvg = logoBase64
+      ? `<img src="${logoBase64}" style="width:40px;height:40px;object-fit:contain;" />`
+      : `<svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+          <rect width="36" height="36" rx="8" fill="#0d9488"/>
+          <text x="18" y="26" font-family="Arial" font-weight="bold" font-size="22" fill="white" text-anchor="middle">F</text>
+        </svg>`;
 
-        /* Pages */
-        .page-landscape { padding: 15mm; }
-        .page-portrait { padding: 15mm; page-break-before: always; }
-        @page { margin: 0; }
-        @media print {
-          .page-landscape { width: 267mm; min-height: 190mm; }
-          .page-portrait { width: 180mm; }
-        }
-      </style></head><body>
-      <div class="page-landscape">
-      <h1>📅 Calendrier FlowFab — ${range.label}</h1>
-      <div class="subtitle">Généré le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</div>
-      <div class="legend">
-        ${printAppro ? '<div class="legend-item"><span class="dot" style="background:#3b82f6"></span>Appro matière</div>' : ""}
-        ${printTracage ? '<div class="legend-item"><span class="dot" style="background:#a855f7"></span>Traçage / Lancement</div>' : ""}
-        ${printProtection ? '<div class="legend-item"><span class="dot" style="background:#f97316"></span>Livraison Protection</div>' : ""}
-        ${printLivraison ? '<div class="legend-item"><span class="dot" style="background:#14b8a6"></span>Livraison Chantier</div>' : ""}
-        ${printTaches ? '<div class="legend-item"><span class="dot" style="background:#6366f1"></span>Tâches</div>' : ""}
-        ${printFacturation ? '<div class="legend-item"><span class="dot" style="background:#f59e0b"></span>Facturation</div>' : ""}
+    // En-tête commun aux deux pages
+    const header = (title: string) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0d9488;padding-bottom:10px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          ${logoSvg}
+          <div>
+            <div style="font-size:15px;font-weight:bold;color:#0f172a;">FlowFab</div>
+            <div style="font-size:9px;color:#64748b;font-family:monospace;">Gestion Sous-Traitance</div>
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:13px;font-weight:bold;color:#0f172a;">${title}</div>
+          <div style="font-size:9px;color:#64748b;">${range.label}</div>
+          <div style="font-size:8px;color:#94a3b8;margin-top:2px;">Édité le ${dateGen}</div>
+        </div>
       </div>`;
 
-    if (isMonthView && printPeriod === "month") {
-      // Vue grille mensuelle
+    // Légende
+    const legendeHtml = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+        ${printAppro ? `<span style="font-size:9px;font-weight:bold;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:10px;">🔵 Appro matière</span>` : ""}
+        ${printTracage ? `<span style="font-size:9px;font-weight:bold;background:#f3e8ff;color:#7e22ce;padding:2px 8px;border-radius:10px;">🟣 Traçage</span>` : ""}
+        ${printProtection ? `<span style="font-size:9px;font-weight:bold;background:#ffedd5;color:#c2410c;padding:2px 8px;border-radius:10px;">🟠 Protection</span>` : ""}
+        ${printLivraison ? `<span style="font-size:9px;font-weight:bold;background:#ccfbf1;color:#0f766e;padding:2px 8px;border-radius:10px;">🟢 Livraison</span>` : ""}
+        ${printTaches ? `<span style="font-size:9px;font-weight:bold;background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:10px;">🔷 Tâches</span>` : ""}
+        ${printFacturation ? `<span style="font-size:9px;font-weight:bold;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:10px;">🟡 Facturation</span>` : ""}
+      </div>`;
+
+    // ── PAGE 1 : Calendrier grille ──────────────────────────────────────────
+    let calHtml = "";
+    if (printPeriod === "month") {
       const firstDay = new Date(currentYear, currentMonth, 1);
       const lastDay = new Date(currentYear, currentMonth + 1, 0);
       const startDow2 = (firstDay.getDay() + 6) % 7;
       const daysInMonth2 = lastDay.getDate();
       const JOURS2 = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
-      html += `<div class="cal-grid">
-        <div class="cal-header">S.</div>
-        ${JOURS2.map(j => `<div class="cal-header">${j}</div>`).join("")}`;
+      calHtml += `<table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+        <colgroup>
+          <col style="width:6%"/>
+          ${JOURS2.map(() => `<col style="width:13.4%"/>`).join("")}
+        </colgroup>
+        <thead>
+          <tr>
+            <th style="background:#f1f5f9;font-size:8px;color:#94a3b8;padding:4px;text-align:center;font-family:monospace;">S.</th>
+            ${JOURS2.map(j => `<th style="background:#f1f5f9;font-size:8px;font-weight:bold;color:#475569;padding:4px;text-align:center;">${j}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>`;
 
       let day2 = 1;
       let rowIdx = 0;
       while (day2 <= daysInMonth2) {
         const wn = getWeekNumber(currentYear, currentMonth, day2);
-        html += `<div class="cal-week">S${wn}</div>`;
+        calHtml += `<tr>
+          <td style="background:#f8fafc;font-size:8px;color:#94a3b8;text-align:center;font-weight:bold;font-family:monospace;padding:3px;border:1px solid #f1f5f9;vertical-align:top;">S${wn}</td>`;
         const startCol = rowIdx === 0 ? startDow2 : 0;
-        for (let e = 0; e < startCol; e++) html += `<div class="cal-day-empty"></div>`;
+        for (let e = 0; e < startCol; e++) {
+          calHtml += `<td style="border:1px solid #f1f5f9;background:#fafafa;height:60px;"></td>`;
+        }
         for (let col = startCol; col < 7 && day2 <= daysInMonth2; col++, day2++) {
           const ds = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}-${String(day2).padStart(2,"0")}`;
           const evts = filteredEvts.filter(e => e.date === ds);
-          html += `<div class="cal-day">
-            <div class="cal-day-num">${day2}</div>
-            ${evts.map(ev => {
-              const bg = ev.type === "appro" ? "#dbeafe" : ev.type === "tracage" ? "#f3e8ff" : ev.type === "protection" ? "#ffedd5" : ev.type === "livraison" ? "#ccfbf1" : ev.type === "tache" ? "#e0e7ff" : "#fef3c7";
-              const col2 = ev.type === "appro" ? "#1d4ed8" : ev.type === "tracage" ? "#7e22ce" : ev.type === "protection" ? "#c2410c" : ev.type === "livraison" ? "#0f766e" : ev.type === "tache" ? "#4338ca" : "#b45309";
-              return `<div class="cal-event" style="background:${bg};color:${col2}">${ev.label}</div>`;
-            }).join("")}
-          </div>`;
+          const isToday2 = ds === today.toISOString().slice(0,10);
+          calHtml += `<td style="border:1px solid #e2e8f0;height:60px;padding:3px;vertical-align:top;${isToday2 ? "background:#f0fdfa;" : ""}">
+            <div style="font-size:9px;font-weight:bold;color:${isToday2 ? "#0f766e" : "#334155"};margin-bottom:2px;">${day2}</div>
+            ${evts.slice(0,4).map(ev => `<div style="font-size:7px;font-weight:bold;background:${getBg(ev.type)};color:${getFg(ev.type)};padding:1px 3px;border-radius:3px;margin-bottom:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${ev.label}</div>`).join("")}
+            ${evts.length > 4 ? `<div style="font-size:7px;color:#94a3b8;">+${evts.length-4}</div>` : ""}
+          </td>`;
         }
-        // Fin de ligne
-        if (day2 > daysInMonth2) {
-          const used = (rowIdx === 0 ? (7 - startDow2) : 7) - (daysInMonth2 - (rowIdx === 0 ? 0 : startDow2 + rowIdx * 7 - startDow2));
-          for (let e = 0; e < 7 - (daysInMonth2 % 7 === 0 ? 7 : daysInMonth2 % 7) - (rowIdx === 0 ? startDow2 : 0); e++) {
-            if (e >= 0 && rowIdx > 0) html += `<div class="cal-day-empty"></div>`;
+        // Cases vides fin de ligne
+        if (day2 > daysInMonth2 && rowIdx > 0) {
+          const filled = (daysInMonth2 - (rowIdx === 0 ? 0 : 0)) % 7 || 7;
+          const remaining = (7 - filled) % 7;
+          for (let e = 0; e < remaining; e++) {
+            calHtml += `<td style="border:1px solid #f1f5f9;background:#fafafa;height:60px;"></td>`;
           }
         }
+        calHtml += `</tr>`;
         rowIdx++;
       }
-      html += `</div>`;
-    } else {
-      // Vue liste chronologique
-      if (Object.keys(byDate).length === 0) {
-        html += `<p style="color:#94a3b8;font-style:italic">Aucun événement sur cette période.</p>`;
-      } else {
-        Object.keys(byDate).sort().forEach(date => {
-          const d = new Date(date + "T12:00:00");
-          const wn = getWeekNumber(d.getFullYear(), d.getMonth(), d.getDate());
-          html += `<div class="date-block">
-            <div class="date-header">
-              ${d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} — S${wn}
-            </div>`;
-          byDate[date].forEach(ev => {
-            const bg = ev.type === "appro" ? "#dbeafe" : ev.type === "tracage" ? "#f3e8ff" : ev.type === "protection" ? "#ffedd5" : ev.type === "livraison" ? "#ccfbf1" : ev.type === "tache" ? "#e0e7ff" : "#fef3c7";
-            const col2 = ev.type === "appro" ? "#1d4ed8" : ev.type === "tracage" ? "#7e22ce" : ev.type === "protection" ? "#c2410c" : ev.type === "livraison" ? "#0f766e" : ev.type === "tache" ? "#4338ca" : "#b45309";
-            const typeLabel = ev.type === "appro" ? "Appro" : ev.type === "tracage" ? "Traçage" : ev.type === "protection" ? "Protection" : ev.type === "livraison" ? "Livraison" : ev.type === "tache" ? "Tâche" : "Facturation";
-            html += `<div class="event-row" style="background:${bg}20">
-              <span class="event-type" style="background:${bg};color:${col2}">${typeLabel}</span>
-              <div>
-                <div class="event-label">${ev.label}</div>
-                ${ev.projectName ? `<div class="event-project">${ev.projectName}</div>` : ""}
-              </div>
-            </div>`;
-          });
-          html += `</div>`;
-        });
-      }
+      calHtml += `</tbody></table>`;
     }
 
-    // Liste chronologique sous la grille (toujours affichée)
-    html += `</div>`; // ferme page-landscape
-
-    // Page 2 — Liste chronologique détaillée (A4 portrait)
-    html += `<div class="page-portrait">
-      <h2 style="font-size:14px;font-weight:bold;color:#1e293b;margin-bottom:4px;">
-        📋 Détail chronologique — ${range.label}
-      </h2>
-      <p style="font-size:9px;color:#94a3b8;margin-bottom:16px;">Généré le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</p>`;
-
+    // ── PAGE 2 : Liste détaillée ──────────────────────────────────────────
+    let listHtml = "";
     if (Object.keys(byDate).length === 0) {
-      html += `<p style="color:#94a3b8;font-style:italic;font-size:10px;">Aucun événement sur cette période.</p>`;
+      listHtml = `<p style="color:#94a3b8;font-style:italic;font-size:10px;">Aucun événement sur cette période.</p>`;
     } else {
       Object.keys(byDate).sort().forEach(date => {
         const d = new Date(date + "T12:00:00");
         const wn = getWeekNumber(d.getFullYear(), d.getMonth(), d.getDate());
-        html += `<div class="date-block">
-          <div class="date-header">
-            ${d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} — S${wn}
-          </div>`;
+        const dateLabel = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+        listHtml += `
+          <div style="margin-bottom:12px;page-break-inside:avoid;">
+            <div style="font-size:10px;font-weight:bold;color:#0f172a;background:#f8fafc;border-left:3px solid #0d9488;padding:4px 8px;margin-bottom:6px;font-family:monospace;">
+              ${dateLabel} &nbsp;—&nbsp; S${wn}
+            </div>`;
         byDate[date].forEach(ev => {
-          const bg = ev.type === "appro" ? "#dbeafe" : ev.type === "tracage" ? "#f3e8ff" : ev.type === "protection" ? "#ffedd5" : ev.type === "livraison" ? "#ccfbf1" : ev.type === "tache" ? "#e0e7ff" : "#fef3c7";
-          const col2 = ev.type === "appro" ? "#1d4ed8" : ev.type === "tracage" ? "#7e22ce" : ev.type === "protection" ? "#c2410c" : ev.type === "livraison" ? "#0f766e" : ev.type === "tache" ? "#4338ca" : "#b45309";
-          const typeLabel = ev.type === "appro" ? "Appro" : ev.type === "tracage" ? "Traçage" : ev.type === "protection" ? "Protection" : ev.type === "livraison" ? "Livraison" : ev.type === "tache" ? "Tâche" : "Facturation";
-          html += `<div class="event-row" style="background:${bg}20">
-            <span class="event-type" style="background:${bg};color:${col2}">${typeLabel}</span>
-            <div>
-              <div class="event-label">${ev.label}</div>
-              ${ev.projectName ? `<div class="event-project">${ev.projectName}</div>` : ""}
-            </div>
-          </div>`;
+          // Trouver le projet lié pour récupérer client et sous-traitant
+          const proj = projects.find(p => p.id === filteredEvts.find(fe => fe.date === date && fe.label === ev.label && fe.type === ev.type)?.projectName?.split("—")[0]?.trim() || "");
+          const clientNom = clients.find(c => c.id === (projects.find(p => `${p.nomAffaire} — ${p.nomZone}` === ev.projectName)?.clientId))?.nom || "";
+          const subNom = subcontractors.find(s => s.id === (projects.find(p => `${p.nomAffaire} — ${p.nomZone}` === ev.projectName)?.sousTraitantId))?.nom || "";
+
+          listHtml += `
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:5px 8px;background:${getBg(ev.type)}30;border-radius:5px;margin-bottom:4px;">
+              <span style="font-size:8px;font-weight:bold;background:${getBg(ev.type)};color:${getFg(ev.type)};padding:2px 7px;border-radius:10px;white-space:nowrap;margin-top:1px;">${getTypeLabel(ev.type)}</span>
+              <div style="flex:1;">
+                <div style="font-size:10px;font-weight:bold;color:#0f172a;">${ev.label}</div>
+                ${ev.projectName ? `<div style="font-size:9px;color:#475569;margin-top:1px;">📁 ${ev.projectName}</div>` : ""}
+                <div style="display:flex;gap:16px;margin-top:2px;">
+                  ${clientNom ? `<div style="font-size:8px;color:#64748b;">👤 Client : <strong>${clientNom}</strong></div>` : ""}
+                  ${subNom ? `<div style="font-size:8px;color:#64748b;">🏭 Sous-traitant : <strong>${subNom}</strong></div>` : ""}
+                </div>
+              </div>
+            </div>`;
         });
-        html += `</div>`;
+        listHtml += `</div>`;
       });
     }
 
-    html += `</div></div></body></html>`;
+    // ── Construction HTML final ─────────────────────────────────────────────
+    // Mois : grille + liste sur la même page
+    // Semaine / Personnalisé : liste uniquement sur une seule page
 
-    // Injection dans le DOM courant + impression directe (même méthode que les autres fiches)
+    let contenuHtml = "";
+    if (printPeriod === "month") {
+      contenuHtml = `
+        <div>
+          ${header("📅 Calendrier — Détail du mois")}
+          ${legendeHtml}
+          ${calHtml}
+          <div style="margin-top:20px;border-top:2px solid #e2e8f0;padding-top:16px;">
+            <div style="font-size:12px;font-weight:bold;color:#0f172a;margin-bottom:10px;font-family:monospace;">
+              📋 Détail chronologique
+            </div>
+            ${listHtml}
+          </div>
+        </div>`;
+    } else {
+      const titreList = printPeriod === "week" ? "📋 Détail — Semaine en cours" : "📋 Détail chronologique";
+      contenuHtml = `
+        <div>
+          ${header(titreList)}
+          ${legendeHtml}
+          ${listHtml}
+        </div>`;
+    }
+
+    const html = `
+      <html><head><meta charset="utf-8">
+      <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; margin: 0; padding: 0; }
+        @page { size: A4 portrait; margin: 15mm; }
+        @media print {
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+      </style></head><body>
+      ${contenuHtml}
+      </body></html>`;
+
+    // Injection DOM + impression
     const tempContainer = document.createElement("div");
     tempContainer.id = "print-temp-calendar";
     tempContainer.innerHTML = html;
@@ -270,17 +300,11 @@ export default function CalendarView({ projects, billings, taches, clients, subc
     const style = document.createElement("style");
     style.id = "print-temporary-style-calendar";
     style.innerHTML = `
+      @page { size: A4 portrait; margin: 15mm; }
       @media print {
         body > * { display: none !important; }
         body > #print-temp-calendar { display: block !important; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        .page-landscape {
-          size: A4 landscape;
-        }
-        .page-portrait {
-          page-break-before: always;
-        }
-        @page { margin: 15mm; }
       }
     `;
     document.head.appendChild(style);
