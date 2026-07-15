@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { Project, Billing, Tache, Client, Subcontractor } from "../types";
 import { ChevronLeft, ChevronRight, Calendar, Filter } from "lucide-react";
 
@@ -142,6 +142,13 @@ export default function CalendarView({ projects, billings, taches, clients, subc
 
   const JOURS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
+  // Calcul du numéro de semaine ISO
+  const getWeekNumber = (year: number, month: number, day: number): number => {
+    const d = new Date(year, month, day);
+    const startOfYear = new Date(d.getFullYear(), 0, 1);
+    return Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+  };
+
   // Prochains événements (pour le résumé)
   const upcomingEvents = allEvents
     .filter(e => e.date >= todayStr)
@@ -208,56 +215,95 @@ export default function CalendarView({ projects, billings, taches, clients, subc
 
           {/* Grille */}
           <div className="p-3">
-            {/* En-têtes jours */}
-            <div className="grid grid-cols-7 mb-1">
+            {/* En-têtes : colonne S. + 7 jours */}
+            <div className="grid grid-cols-8 mb-1">
+              <div className="text-center text-[10px] font-bold text-slate-300 uppercase py-1 font-mono">S.</div>
               {JOURS.map(j => (
                 <div key={j} className="text-center text-[10px] font-bold text-slate-400 uppercase py-1">{j}</div>
               ))}
             </div>
 
-            {/* Cellules */}
-            <div className="grid grid-cols-7 gap-0.5">
-              {/* Cases vides avant le 1er */}
-              {Array.from({ length: startDow }).map((_, i) => (
-                <div key={`empty-${i}`} className="h-20 rounded-lg bg-slate-50/30" />
-              ))}
+            {/* Lignes semaine par semaine */}
+            {(() => {
+              const rows: React.ReactNode[] = [];
+              let day = 1;
+              let rowIndex = 0;
 
-              {/* Jours du mois */}
-              {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-                const dateStr = getDateStr(day);
-                const events = getEventsForDay(day);
-                const isToday = dateStr === todayStr;
-                const isSelected = dateStr === selectedDay;
-                const hasOverdue = events.some(e => e.overdue);
+              while (day <= daysInMonth) {
+                const cells: React.ReactNode[] = [];
+                const weekNum = getWeekNumber(currentYear, currentMonth, day);
 
-                return (
-                  <div key={day}
-                    onClick={() => setSelectedDay(isSelected ? null : dateStr)}
-                    className={`h-20 rounded-lg p-1 cursor-pointer transition border ${
-                      isSelected ? "border-teal-400 bg-teal-50/60" :
-                      isToday ? "border-teal-300 bg-teal-50/30" :
-                      hasOverdue ? "border-red-200 bg-red-50/20" :
-                      "border-transparent hover:border-slate-200 hover:bg-slate-50/60"
-                    }`}>
-                    <div className={`text-[11px] font-bold mb-1 w-5 h-5 flex items-center justify-center rounded-full ${
-                      isToday ? "bg-teal-600 text-white" : "text-slate-700"
-                    }`}>
-                      {day}
-                    </div>
-                    <div className="space-y-0.5 overflow-hidden">
-                      {events.slice(0, 3).map((ev, idx) => (
-                        <div key={idx} className={`text-[9px] font-semibold px-1 py-0.5 rounded truncate ${ev.bgColor} ${ev.color}`}>
-                          {ev.label}
-                        </div>
-                      ))}
-                      {events.length > 3 && (
-                        <div className="text-[9px] text-slate-400 font-mono px-1">+{events.length - 3}</div>
-                      )}
-                    </div>
+                // Numéro de semaine
+                cells.push(
+                  <div key="week" className="h-20 flex items-start justify-center pt-1">
+                    <span className="text-[10px] font-bold text-slate-300 font-mono">S{weekNum}</span>
                   </div>
                 );
-              })}
-            </div>
+
+                // Cases vides au début de la première ligne
+                if (rowIndex === 0 && startDow > 0) {
+                  for (let e = 0; e < startDow; e++) {
+                    cells.push(<div key={`empty-${e}`} className="h-20 rounded-lg bg-slate-50/30" />);
+                  }
+                }
+
+                // Jours de cette semaine
+                const startCol = rowIndex === 0 ? startDow : 0;
+                for (let col = startCol; col < 7 && day <= daysInMonth; col++, day++) {
+                  const dateStr = getDateStr(day);
+                  const events = getEventsForDay(day);
+                  const isToday = dateStr === todayStr;
+                  const isSelected = dateStr === selectedDay;
+                  const hasOverdue = events.some(e => e.overdue);
+                  const d = day;
+
+                  cells.push(
+                    <div key={d}
+                      onClick={() => setSelectedDay(isSelected ? null : dateStr)}
+                      className={`h-20 rounded-lg p-1 cursor-pointer transition border ${
+                        isSelected ? "border-teal-400 bg-teal-50/60" :
+                        isToday ? "border-teal-300 bg-teal-50/30" :
+                        hasOverdue ? "border-red-200 bg-red-50/20" :
+                        "border-transparent hover:border-slate-200 hover:bg-slate-50/60"
+                      }`}>
+                      <div className={`text-[11px] font-bold mb-1 w-5 h-5 flex items-center justify-center rounded-full ${
+                        isToday ? "bg-teal-600 text-white" : "text-slate-700"
+                      }`}>
+                        {d}
+                      </div>
+                      <div className="space-y-0.5 overflow-hidden">
+                        {events.slice(0, 3).map((ev, idx) => (
+                          <div key={idx} className={`text-[9px] font-semibold px-1 py-0.5 rounded truncate ${ev.bgColor} ${ev.color}`}>
+                            {ev.label}
+                          </div>
+                        ))}
+                        {events.length > 3 && (
+                          <div className="text-[9px] text-slate-400 font-mono px-1">+{events.length - 3}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Cases vides à la fin de la dernière ligne
+                if (day > daysInMonth) {
+                  const filledCols = rowIndex === 0 ? (7 - startDow) : (day - 1 - (rowIndex === 0 ? 0 : startDow) - (rowIndex - 1) * 7) % 7;
+                  const totalDaysThisRow = cells.length - 1; // -1 pour la colonne semaine
+                  for (let e = totalDaysThisRow; e < 7; e++) {
+                    cells.push(<div key={`end-${e}`} className="h-20 rounded-lg bg-slate-50/30" />);
+                  }
+                }
+
+                rows.push(
+                  <div key={`row-${rowIndex}`} className="grid grid-cols-8 gap-0.5 mb-0.5">
+                    {cells}
+                  </div>
+                );
+                rowIndex++;
+              }
+
+              return rows;
+            })()}
           </div>
 
           {/* Détail du jour sélectionné */}

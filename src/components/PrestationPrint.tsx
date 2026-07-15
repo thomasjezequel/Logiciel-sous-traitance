@@ -366,7 +366,12 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
               <span className="text-xs text-blue-600 uppercase tracking-widest block font-mono">Date d'Appro Matière</span>
               <span className="text-base font-bold text-blue-800 mt-1">
                 {(project as any).dateAppro
-                  ? new Date((project as any).dateAppro).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+                  ? (() => {
+                      const d = new Date((project as any).dateAppro);
+                      const startOfYear = new Date(d.getFullYear(), 0, 1);
+                      const week = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+                      return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} — S${week}`;
+                    })()
                   : "Non renseignée"
                 }
               </span>
@@ -377,7 +382,12 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
               <span className="text-xs text-purple-600 uppercase tracking-widest block font-mono">Date de Traçage / Lancement</span>
               <span className="text-base font-bold text-purple-800 mt-1">
                 {(project as any).dateTracage
-                  ? new Date((project as any).dateTracage).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+                  ? (() => {
+                      const d = new Date((project as any).dateTracage);
+                      const startOfYear = new Date(d.getFullYear(), 0, 1);
+                      const week = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+                      return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} — S${week}`;
+                    })()
                   : "Non renseignée"
                 }
               </span>
@@ -387,8 +397,13 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
             <div className="bg-white print:bg-white p-3 rounded border border-teal-100 flex flex-col">
               <span className="text-xs text-gray-500 uppercase tracking-widest block font-mono">Délai de Livraison Site de Protection</span>
               <span className="text-base font-bold text-teal-800 mt-1">
-                {project.delaiLivraisonProtection 
-                  ? new Date(project.delaiLivraisonProtection).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+                {project.delaiLivraisonProtection
+                  ? (() => {
+                      const d = new Date(project.delaiLivraisonProtection!);
+                      const startOfYear = new Date(d.getFullYear(), 0, 1);
+                      const week = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+                      return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} — S${week}`;
+                    })()
                   : "Non requis"
                 }
               </span>
@@ -398,8 +413,13 @@ export default function PrestationPrint({ project, client, subcontractor, onClos
             <div className="bg-white print:bg-white p-3 rounded border border-red-100 flex flex-col">
               <span className="text-xs text-red-500 uppercase tracking-widest block font-mono">Délai de Livraison sur Chantier</span>
               <span className="text-base font-bold text-red-700 mt-1">
-                {project.delaiLivraisonChantier 
-                  ? new Date(project.delaiLivraisonChantier).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+                {project.delaiLivraisonChantier
+                  ? (() => {
+                      const d = new Date(project.delaiLivraisonChantier);
+                      const startOfYear = new Date(d.getFullYear(), 0, 1);
+                      const week = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+                      return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} — S${week}`;
+                    })()
                   : "Non renseigné"
                 }
               </span>
