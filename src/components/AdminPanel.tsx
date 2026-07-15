@@ -320,9 +320,25 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                         </div>
                         <div>
                           <span className="font-bold text-slate-900 block">{u.nom}</span>
-                          <span className="text-[10px] text-gray-400 font-mono block">
-                            RÔLE: {u.poste ? u.poste : "ex: Conducteur de travaux"}
-                          </span>
+                          {isSelf ? (
+                            <span className="text-[10px] text-gray-400 font-mono block">
+                              RÔLE: {u.poste ? u.poste : "ex: Conducteur de travaux"}
+                            </span>
+                          ) : (
+                            <input
+                              type="text"
+                              defaultValue={u.poste || ""}
+                              placeholder="ex: Conducteur de travaux"
+                              onBlur={async (e) => {
+                                const val = e.target.value.trim();
+                                if (val !== (u.poste || "")) {
+                                  await api.updateUser(u.id, { poste: val });
+                                  fetchUsers();
+                                }
+                              }}
+                              className="text-[10px] text-gray-500 font-mono bg-transparent border-b border-dashed border-slate-300 focus:border-teal-400 focus:outline-none w-full mt-0.5 py-0.5"
+                            />
+                          )}
                         </div>
                       </div>
                     </td>
