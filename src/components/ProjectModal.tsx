@@ -58,6 +58,8 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
     conducteurTravaux: "", // Empty by default now
     delaiLivraisonProtection: "",
     delaiLivraisonChantier: "",
+    dateAppro: "",
+    dateTracage: "",
     sousTraitantId: "",
     status: ProjectStatus.EN_COURS,
     typeOuvrage: "",
@@ -90,6 +92,8 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
         dateCommande: project.dateCommande || "",
         delaiLivraisonProtection: project.delaiLivraisonProtection || "",
         delaiLivraisonChantier: project.delaiLivraisonChantier || "",
+        dateAppro: project.dateAppro || "",
+        dateTracage: project.dateTracage || "",
         status: project.status || ProjectStatus.EN_COURS,
         typeOuvrage: project.typeOuvrage || "",
         remarquesPrestation: project.remarquesPrestation || "",
@@ -114,6 +118,8 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
         conducteurTravaux: "", // Empty for creation as requested
         delaiLivraisonProtection: "",
         delaiLivraisonChantier: "",
+        dateAppro: "",
+        dateTracage: "",
         sousTraitantId: subcontractors.length > 0 ? subcontractors[0].id : "",
         status: ProjectStatus.EN_COURS,
         typeOuvrage: "",
@@ -448,6 +454,26 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
           <div>
             <h3 className="text-xs font-bold text-teal-700 uppercase tracking-widest mb-3 border-b border-slate-100 pb-1">4. Logistique & Délais de Livraison</h3>
             <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">Date d'Approvisionnement Matière</label>
+                <input
+                  type="date"
+                  name="dateAppro"
+                  value={formData.dateAppro || ""}
+                  onChange={handleChange}
+                  className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">Date de Traçage / Lancement Fabrication</label>
+                <input
+                  type="date"
+                  name="dateTracage"
+                  value={formData.dateTracage || ""}
+                  onChange={handleChange}
+                  className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
+                />
+              </div>
               <div>
                 <label className="text-xs font-medium text-gray-500 block mb-1">Livraison Site Protection (si besoin)</label>
                 <input

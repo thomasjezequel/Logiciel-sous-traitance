@@ -953,6 +953,8 @@ app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
     nomZone: data.nomZone,
     numCommande: data.numCommande || "",
     numCommandeSousTraitant: data.numCommandeSousTraitant || "",
+    dateAppro: data.dateAppro || "",
+    dateTracage: data.dateTracage || "",
     dateCommande: data.dateCommande || (/* @__PURE__ */ new Date()).toISOString().substring(0, 10),
     clientId: data.clientId,
     poidsTotal: computedPoidsTotal,
@@ -1021,6 +1023,8 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
   if (data.nomZone !== void 0) project.nomZone = data.nomZone;
   if (data.numCommande !== void 0) project.numCommande = data.numCommande;
   if (data.numCommandeSousTraitant !== void 0) project.numCommandeSousTraitant = data.numCommandeSousTraitant;
+  if (data.dateAppro !== void 0) project.dateAppro = data.dateAppro;
+  if (data.dateTracage !== void 0) project.dateTracage = data.dateTracage;
   if (data.dateCommande !== void 0) project.dateCommande = data.dateCommande;
   if (data.clientId !== void 0) project.clientId = data.clientId;
   if (data.poidsPRS !== void 0) project.poidsPRS = data.poidsPRS === "" ? void 0 : Number(data.poidsPRS);

@@ -61,6 +61,8 @@ export interface Project {
   conducteurTravaux: string;
   delaiLivraisonProtection?: string; // YYYY-MM-DD
   delaiLivraisonChantier: string; // YYYY-MM-DD
+  dateAppro?: string; // YYYY-MM-DD — Date d'approvisionnement matière
+  dateTracage?: string; // YYYY-MM-DD — Date de traçage/lancement en fabrication
   sousTraitantId: string; // Foreign key to Subcontractor
   status?: ProjectStatus; // Status of project
   typeOuvrage?: string; // Type d'ouvrage
