@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { Project, Billing, Tache, Client, Subcontractor } from "../types";
-import { ChevronLeft, ChevronRight, Calendar, Filter } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Printer, X, Download } from "lucide-react";
 
 interface CalendarEvent {
   date: string; // YYYY-MM-DD
@@ -34,6 +34,266 @@ export default function CalendarView({ projects, billings, taches, clients, subc
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth()); // 0-indexed
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+  // ── Modal impression ──────────────────────────────────────────────────────
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printPeriod, setPrintPeriod] = useState<"month" | "week" | "custom">("month");
+  const [printDateDebut, setPrintDateDebut] = useState("");
+  const [printDateFin, setPrintDateFin] = useState("");
+  const [printAppro, setPrintAppro] = useState(true);
+  const [printTracage, setPrintTracage] = useState(true);
+  const [printProtection, setPrintProtection] = useState(true);
+  const [printLivraison, setPrintLivraison] = useState(true);
+  const [printTaches, setPrintTaches] = useState(true);
+  const [printFacturation, setPrintFacturation] = useState(true);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  // Calcul des dates de la période d'impression
+  const getPrintRange = () => {
+    if (printPeriod === "month") {
+      const first = new Date(currentYear, currentMonth, 1);
+      const last = new Date(currentYear, currentMonth + 1, 0);
+      return {
+        debut: first.toISOString().slice(0, 10),
+        fin: last.toISOString().slice(0, 10),
+        label: new Date(currentYear, currentMonth, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
+      };
+    }
+    if (printPeriod === "week") {
+      const d = new Date();
+      const dow = (d.getDay() + 6) % 7;
+      const mon = new Date(d); mon.setDate(d.getDate() - dow);
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+      return {
+        debut: mon.toISOString().slice(0, 10),
+        fin: sun.toISOString().slice(0, 10),
+        label: `Semaine du ${mon.toLocaleDateString("fr-FR")} au ${sun.toLocaleDateString("fr-FR")}`
+      };
+    }
+    return {
+      debut: printDateDebut,
+      fin: printDateFin,
+      label: `Du ${new Date(printDateDebut).toLocaleDateString("fr-FR")} au ${new Date(printDateFin).toLocaleDateString("fr-FR")}`
+    };
+  };
+
+  // Génère et imprime le PDF
+  const handlePrint = () => {
+    const range = getPrintRange();
+    if (!range.debut || !range.fin) return;
+
+    const filteredEvts = allEvents.filter(e => {
+      if (e.date < range.debut || e.date > range.fin) return false;
+      if (e.type === "appro" && !printAppro) return false;
+      if (e.type === "tracage" && !printTracage) return false;
+      if (e.type === "protection" && !printProtection) return false;
+      if (e.type === "livraison" && !printLivraison) return false;
+      if (e.type === "tache" && !printTaches) return false;
+      if (e.type === "facturation" && !printFacturation) return false;
+      return true;
+    }).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Calcul nombre de jours
+    const nbJours = Math.ceil((new Date(range.fin).getTime() - new Date(range.debut).getTime()) / 86400000) + 1;
+    const isMonthView = printPeriod === "month" || nbJours > 14;
+
+    // Grouper par date pour la vue liste
+    const byDate: Record<string, CalendarEvent[]> = {};
+    filteredEvts.forEach(e => {
+      if (!byDate[e.date]) byDate[e.date] = [];
+      byDate[e.date].push(e);
+    });
+
+    // Construire le HTML du document
+    let html = `
+      <html><head><meta charset="utf-8">
+      <style>
+        body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; margin: 0; }
+        h1 { font-size: 16px; font-weight: bold; margin-bottom: 4px; }
+        .subtitle { color: #64748b; font-size: 10px; margin-bottom: 20px; }
+        .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+        .legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+        /* Vue liste */
+        .date-block { margin-bottom: 14px; }
+        .date-header { font-size: 11px; font-weight: bold; color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 6px; }
+        .event-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; border-radius: 4px; margin-bottom: 3px; }
+        .event-label { font-weight: bold; font-size: 10px; }
+        .event-project { font-size: 9px; color: #64748b; }
+        .event-type { font-size: 8px; font-weight: bold; padding: 1px 5px; border-radius: 10px; white-space: nowrap; }
+
+        /* Vue grille */
+        .cal-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+        .cal-header { background: #f1f5f9; text-align: center; padding: 4px; font-size: 9px; font-weight: bold; color: #64748b; }
+        .cal-week { background: #f8fafc; text-align: center; padding: 4px 2px; font-size: 9px; color: #94a3b8; font-weight: bold; }
+        .cal-day { border: 1px solid #e2e8f0; min-height: 70px; padding: 3px; vertical-align: top; }
+        .cal-day-empty { border: 1px solid #f1f5f9; min-height: 70px; background: #fafafa; }
+        .cal-day-num { font-size: 10px; font-weight: bold; color: #334155; margin-bottom: 2px; }
+        .cal-event { font-size: 8px; font-weight: bold; padding: 1px 3px; border-radius: 3px; margin-bottom: 1px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+        /* Pages */
+        .page-landscape { padding: 15mm; }
+        .page-portrait { padding: 15mm; page-break-before: always; }
+        @page { margin: 0; }
+        @media print {
+          .page-landscape { width: 267mm; min-height: 190mm; }
+          .page-portrait { width: 180mm; }
+        }
+      </style></head><body>
+      <div class="page-landscape">
+      <h1>📅 Calendrier FlowFab — ${range.label}</h1>
+      <div class="subtitle">Généré le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</div>
+      <div class="legend">
+        ${printAppro ? '<div class="legend-item"><span class="dot" style="background:#3b82f6"></span>Appro matière</div>' : ""}
+        ${printTracage ? '<div class="legend-item"><span class="dot" style="background:#a855f7"></span>Traçage / Lancement</div>' : ""}
+        ${printProtection ? '<div class="legend-item"><span class="dot" style="background:#f97316"></span>Livraison Protection</div>' : ""}
+        ${printLivraison ? '<div class="legend-item"><span class="dot" style="background:#14b8a6"></span>Livraison Chantier</div>' : ""}
+        ${printTaches ? '<div class="legend-item"><span class="dot" style="background:#6366f1"></span>Tâches</div>' : ""}
+        ${printFacturation ? '<div class="legend-item"><span class="dot" style="background:#f59e0b"></span>Facturation</div>' : ""}
+      </div>`;
+
+    if (isMonthView && printPeriod === "month") {
+      // Vue grille mensuelle
+      const firstDay = new Date(currentYear, currentMonth, 1);
+      const lastDay = new Date(currentYear, currentMonth + 1, 0);
+      const startDow2 = (firstDay.getDay() + 6) % 7;
+      const daysInMonth2 = lastDay.getDate();
+      const JOURS2 = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
+      html += `<div class="cal-grid">
+        <div class="cal-header">S.</div>
+        ${JOURS2.map(j => `<div class="cal-header">${j}</div>`).join("")}`;
+
+      let day2 = 1;
+      let rowIdx = 0;
+      while (day2 <= daysInMonth2) {
+        const wn = getWeekNumber(currentYear, currentMonth, day2);
+        html += `<div class="cal-week">S${wn}</div>`;
+        const startCol = rowIdx === 0 ? startDow2 : 0;
+        for (let e = 0; e < startCol; e++) html += `<div class="cal-day-empty"></div>`;
+        for (let col = startCol; col < 7 && day2 <= daysInMonth2; col++, day2++) {
+          const ds = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}-${String(day2).padStart(2,"0")}`;
+          const evts = filteredEvts.filter(e => e.date === ds);
+          html += `<div class="cal-day">
+            <div class="cal-day-num">${day2}</div>
+            ${evts.map(ev => {
+              const bg = ev.type === "appro" ? "#dbeafe" : ev.type === "tracage" ? "#f3e8ff" : ev.type === "protection" ? "#ffedd5" : ev.type === "livraison" ? "#ccfbf1" : ev.type === "tache" ? "#e0e7ff" : "#fef3c7";
+              const col2 = ev.type === "appro" ? "#1d4ed8" : ev.type === "tracage" ? "#7e22ce" : ev.type === "protection" ? "#c2410c" : ev.type === "livraison" ? "#0f766e" : ev.type === "tache" ? "#4338ca" : "#b45309";
+              return `<div class="cal-event" style="background:${bg};color:${col2}">${ev.label}</div>`;
+            }).join("")}
+          </div>`;
+        }
+        // Fin de ligne
+        if (day2 > daysInMonth2) {
+          const used = (rowIdx === 0 ? (7 - startDow2) : 7) - (daysInMonth2 - (rowIdx === 0 ? 0 : startDow2 + rowIdx * 7 - startDow2));
+          for (let e = 0; e < 7 - (daysInMonth2 % 7 === 0 ? 7 : daysInMonth2 % 7) - (rowIdx === 0 ? startDow2 : 0); e++) {
+            if (e >= 0 && rowIdx > 0) html += `<div class="cal-day-empty"></div>`;
+          }
+        }
+        rowIdx++;
+      }
+      html += `</div>`;
+    } else {
+      // Vue liste chronologique
+      if (Object.keys(byDate).length === 0) {
+        html += `<p style="color:#94a3b8;font-style:italic">Aucun événement sur cette période.</p>`;
+      } else {
+        Object.keys(byDate).sort().forEach(date => {
+          const d = new Date(date + "T12:00:00");
+          const wn = getWeekNumber(d.getFullYear(), d.getMonth(), d.getDate());
+          html += `<div class="date-block">
+            <div class="date-header">
+              ${d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} — S${wn}
+            </div>`;
+          byDate[date].forEach(ev => {
+            const bg = ev.type === "appro" ? "#dbeafe" : ev.type === "tracage" ? "#f3e8ff" : ev.type === "protection" ? "#ffedd5" : ev.type === "livraison" ? "#ccfbf1" : ev.type === "tache" ? "#e0e7ff" : "#fef3c7";
+            const col2 = ev.type === "appro" ? "#1d4ed8" : ev.type === "tracage" ? "#7e22ce" : ev.type === "protection" ? "#c2410c" : ev.type === "livraison" ? "#0f766e" : ev.type === "tache" ? "#4338ca" : "#b45309";
+            const typeLabel = ev.type === "appro" ? "Appro" : ev.type === "tracage" ? "Traçage" : ev.type === "protection" ? "Protection" : ev.type === "livraison" ? "Livraison" : ev.type === "tache" ? "Tâche" : "Facturation";
+            html += `<div class="event-row" style="background:${bg}20">
+              <span class="event-type" style="background:${bg};color:${col2}">${typeLabel}</span>
+              <div>
+                <div class="event-label">${ev.label}</div>
+                ${ev.projectName ? `<div class="event-project">${ev.projectName}</div>` : ""}
+              </div>
+            </div>`;
+          });
+          html += `</div>`;
+        });
+      }
+    }
+
+    // Liste chronologique sous la grille (toujours affichée)
+    html += `</div>`; // ferme page-landscape
+
+    // Page 2 — Liste chronologique détaillée (A4 portrait)
+    html += `<div class="page-portrait">
+      <h2 style="font-size:14px;font-weight:bold;color:#1e293b;margin-bottom:4px;">
+        📋 Détail chronologique — ${range.label}
+      </h2>
+      <p style="font-size:9px;color:#94a3b8;margin-bottom:16px;">Généré le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</p>`;
+
+    if (Object.keys(byDate).length === 0) {
+      html += `<p style="color:#94a3b8;font-style:italic;font-size:10px;">Aucun événement sur cette période.</p>`;
+    } else {
+      Object.keys(byDate).sort().forEach(date => {
+        const d = new Date(date + "T12:00:00");
+        const wn = getWeekNumber(d.getFullYear(), d.getMonth(), d.getDate());
+        html += `<div class="date-block">
+          <div class="date-header">
+            ${d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} — S${wn}
+          </div>`;
+        byDate[date].forEach(ev => {
+          const bg = ev.type === "appro" ? "#dbeafe" : ev.type === "tracage" ? "#f3e8ff" : ev.type === "protection" ? "#ffedd5" : ev.type === "livraison" ? "#ccfbf1" : ev.type === "tache" ? "#e0e7ff" : "#fef3c7";
+          const col2 = ev.type === "appro" ? "#1d4ed8" : ev.type === "tracage" ? "#7e22ce" : ev.type === "protection" ? "#c2410c" : ev.type === "livraison" ? "#0f766e" : ev.type === "tache" ? "#4338ca" : "#b45309";
+          const typeLabel = ev.type === "appro" ? "Appro" : ev.type === "tracage" ? "Traçage" : ev.type === "protection" ? "Protection" : ev.type === "livraison" ? "Livraison" : ev.type === "tache" ? "Tâche" : "Facturation";
+          html += `<div class="event-row" style="background:${bg}20">
+            <span class="event-type" style="background:${bg};color:${col2}">${typeLabel}</span>
+            <div>
+              <div class="event-label">${ev.label}</div>
+              ${ev.projectName ? `<div class="event-project">${ev.projectName}</div>` : ""}
+            </div>
+          </div>`;
+        });
+        html += `</div>`;
+      });
+    }
+
+    html += `</div></div></body></html>`;
+
+    // Injection dans le DOM courant + impression directe (même méthode que les autres fiches)
+    const tempContainer = document.createElement("div");
+    tempContainer.id = "print-temp-calendar";
+    tempContainer.innerHTML = html;
+    document.body.appendChild(tempContainer);
+
+    const style = document.createElement("style");
+    style.id = "print-temporary-style-calendar";
+    style.innerHTML = `
+      @media print {
+        body > * { display: none !important; }
+        body > #print-temp-calendar { display: block !important; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        .page-landscape {
+          size: A4 landscape;
+        }
+        .page-portrait {
+          page-break-before: always;
+        }
+        @page { margin: 15mm; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    window.print();
+
+    setTimeout(() => {
+      tempContainer.remove();
+      style.remove();
+    }, 1000);
+
+    setShowPrintModal(false);
+  };
 
   // Filtres actifs
   const [showAppro, setShowAppro] = useState(true);
@@ -188,7 +448,97 @@ export default function CalendarView({ projects, billings, taches, clients, subc
               <option value="">Tous les sous-traitants</option>
               {subcontractors.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
             </select>
+            <button onClick={() => setShowPrintModal(true)}
+              className="text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+              <Printer className="w-3.5 h-3.5" />
+              Imprimer
+            </button>
           </div>
+
+      {/* ── Modal d'impression ── */}
+      {showPrintModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Printer className="w-4 h-4 text-teal-600" />
+                Imprimer le calendrier
+              </h2>
+              <button onClick={() => setShowPrintModal(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-5">
+
+              {/* Étape 1 — Période */}
+              <div>
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono mb-2">Étape 1 — Période</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { val: "month", label: "Mois en cours", sub: new Date(currentYear, currentMonth, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" }) },
+                    { val: "week", label: "Semaine en cours", sub: `S${getWeekNumber(today.getFullYear(), today.getMonth(), today.getDate())}` },
+                    { val: "custom", label: "Dates personnalisées", sub: "Choisir les dates" }
+                  ].map(opt => (
+                    <button key={opt.val} onClick={() => setPrintPeriod(opt.val as any)}
+                      className={`p-3 rounded-lg border text-left transition ${printPeriod === opt.val ? "border-teal-500 bg-teal-50" : "border-slate-200 hover:bg-slate-50"}`}>
+                      <span className={`text-xs font-bold block ${printPeriod === opt.val ? "text-teal-800" : "text-slate-700"}`}>{opt.label}</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5 capitalize">{opt.sub}</span>
+                    </button>
+                  ))}
+                </div>
+                {printPeriod === "custom" && (
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase font-mono block mb-1">Date début</label>
+                      <input type="date" value={printDateDebut} onChange={e => setPrintDateDebut(e.target.value)}
+                        className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 focus:outline-teal-500" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase font-mono block mb-1">Date fin</label>
+                      <input type="date" value={printDateFin} onChange={e => setPrintDateFin(e.target.value)}
+                        className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 focus:outline-teal-500" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Étape 2 — Catégories */}
+              <div>
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono mb-2">Étape 2 — Catégories à inclure</h3>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: "🔵 Appro", state: printAppro, set: setPrintAppro },
+                    { label: "🟣 Traçage", state: printTracage, set: setPrintTracage },
+                    { label: "🟠 Protection", state: printProtection, set: setPrintProtection },
+                    { label: "🟢 Livraison", state: printLivraison, set: setPrintLivraison },
+                    { label: "🔷 Tâches", state: printTaches, set: setPrintTaches },
+                    { label: "🟡 Facturation", state: printFacturation, set: setPrintFacturation },
+                  ].map((f, i) => (
+                    <button key={i} onClick={() => f.set(v => !v)}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition ${f.state ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-slate-200"}`}>
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bouton générer */}
+              <div className="pt-2 border-t border-slate-100 flex justify-end gap-2">
+                <button onClick={() => setShowPrintModal(false)}
+                  className="text-sm text-slate-600 border border-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50 transition">
+                  Annuler
+                </button>
+                <button onClick={handlePrint}
+                  disabled={printPeriod === "custom" && (!printDateDebut || !printDateFin)}
+                  className="text-sm font-bold bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 rounded-lg flex items-center gap-2 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                  <Download className="w-4 h-4" />
+                  Générer et imprimer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
         </div>
       </div>
 
