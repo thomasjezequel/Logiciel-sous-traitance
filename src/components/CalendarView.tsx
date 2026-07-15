@@ -402,14 +402,24 @@ export default function CalendarView({ projects, billings, taches, clients, subc
     }
 
     if (showFacturation) {
-      billings.filter(b => b.etatFacturation !== "Payée" && (filterClient === "" || filteredProjectIds.has(b.projetId))).forEach(b => {
+      billings.filter(b => b.etatFacturation !== "Payée" && (filterClient === "" || filteredProjectIds.has(b.projetId) || b.projetIds?.some(id => filteredProjectIds.has(id)))).forEach(b => {
         if (b.dateEcheance) {
           const proj = projects.find(p => p.id === b.projetId);
+          // Récupérer toutes les zones si facture multi-affaires
+          const autresZones = (b.projetIds || [])
+            .map(pid => projects.find(p => p.id === pid))
+            .filter(Boolean)
+            .map(p => p!.nomZone)
+            .join(", ");
+          const allZones = [proj?.nomZone, autresZones].filter(Boolean).join(", ");
+          const projectName = proj ? `${proj.nomAffaire} — ${allZones}` : "";
+          const client = proj ? clients.find(c => c.id === proj.clientId) : undefined;
+          const montant = (b.quantiteFacturee * b.prixUnitaire).toLocaleString("fr-FR");
           events.push({
             date: b.dateEcheance,
-            label: `Facture ${(b.quantiteFacturee * b.prixUnitaire).toLocaleString("fr-FR")} €`,
+            label: `Facture ${montant} € — ${proj?.nomAffaire || "Affaire inconnue"}`,
             type: "facturation",
-            projectName: proj ? `${proj.nomAffaire} — ${proj.nomZone}` : "",
+            projectName: projectName,
             ...TYPE_CONFIG.facturation
           });
         }
