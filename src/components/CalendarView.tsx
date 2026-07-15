@@ -402,7 +402,7 @@ export default function CalendarView({ projects, billings, taches, clients, subc
     }
 
     if (showFacturation) {
-      billings.filter(b => b.etatFacturation !== "Payée" && (filterClient === "" || filteredProjectIds.has(b.projetId) || b.projetIds?.some(id => filteredProjectIds.has(id)))).forEach(b => {
+      billings.filter(b => b.etatFacturation !== "Payée" && b.etatFacturation !== "PAYEE" && b.etatFacturation !== "Payee" && (filterClient === "" || filteredProjectIds.has(b.projetId) || b.projetIds?.some(id => filteredProjectIds.has(id)))).forEach(b => {
         if (b.dateEcheance) {
           const proj = projects.find(p => p.id === b.projetId);
           // Récupérer toutes les zones si facture multi-affaires
@@ -712,17 +712,59 @@ export default function CalendarView({ projects, billings, taches, clients, subc
                 📅 {new Date(selectedDay + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
               </h3>
               <div className="space-y-2">
-                {selectedEvents.map((ev, idx) => (
-                  <div key={idx} className={`flex items-start gap-2.5 p-2.5 rounded-lg ${ev.bgColor} border ${TYPE_CONFIG[ev.type].border}`}>
-                    <div className="flex-1">
-                      <span className={`text-xs font-bold block ${ev.color}`}>{ev.label}</span>
-                      {ev.projectName && <span className="text-[10px] text-slate-500 block">{ev.projectName}</span>}
+                {selectedEvents.map((ev, idx) => {
+                  const projLie = projects.find(p => `${p.nomAffaire} — ${p.nomZone}` === ev.projectName);
+                  const clientNom = clients.find(c => c.id === projLie?.clientId)?.nom;
+                  const subNom = subcontractors.find(s => s.id === projLie?.sousTraitantId)?.nom;
+                  const tache = ev.type === "tache" && ev.tacheId
+                    ? taches.find(t => t.id === ev.tacheId)
+                    : undefined;
+                  const interlocuteur = tache
+                    ? interlocuteurs.find(i => i.id === tache.interlocuteurId)
+                    : undefined;
+                  const description = tache ? (tache as any).description : undefined;
+
+                  return (
+                    <div key={idx} className={`p-2.5 rounded-lg ${ev.bgColor} border ${TYPE_CONFIG[ev.type].border} space-y-1.5`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <span className={`text-xs font-bold block ${ev.color}`}>{ev.label}</span>
+                          {ev.projectName && (
+                            <span className="text-[10px] text-slate-600 font-semibold block">📁 {ev.projectName}</span>
+                          )}
+                        </div>
+                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full shrink-0 ${ev.bgColor} ${ev.color}`}>
+                          {TYPE_CONFIG[ev.type].label}
+                        </span>
+                      </div>
+                      {(clientNom || subNom) && (
+                        <div className="flex gap-3 flex-wrap">
+                          {clientNom && (
+                            <span className="text-[10px] text-slate-500">
+                              👤 Client : <strong className="text-slate-700">{clientNom}</strong>
+                            </span>
+                          )}
+                          {subNom && (
+                            <span className="text-[10px] text-slate-500">
+                              🏭 Sous-traitant : <strong className="text-slate-700">{subNom}</strong>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {interlocuteur && (
+                        <span className="text-[10px] text-indigo-600 block">
+                          👤 Assigné à : <strong>{interlocuteur.prenom} {interlocuteur.nom}</strong>
+                          <span className="text-slate-400 ml-1">({interlocuteur.email})</span>
+                        </span>
+                      )}
+                      {description && (
+                        <span className="text-[10px] text-slate-500 italic block">
+                          ℹ️ {description}
+                        </span>
+                      )}
                     </div>
-                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${ev.bgColor} ${ev.color} shrink-0`}>
-                      {TYPE_CONFIG[ev.type].label}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
