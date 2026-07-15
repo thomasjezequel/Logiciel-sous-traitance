@@ -78,6 +78,17 @@ interface AuditLogEntry {
   details: string;
 }
 
+interface Invitation {
+  id: string;
+  email: string;       // Email imposé — seul cet email peut créer un compte via ce lien
+  nom: string;         // Nom pré-rempli
+  token: string;       // Token signé HMAC, lié à l'email
+  role: string;        // Rôle pré-attribué
+  createdAt: string;
+  expiresAt: string;   // Validité 7 jours
+  used: boolean;       // Une fois utilisé, ne peut plus servir
+}
+
 interface DatabaseSchema {
   users: Array<User & { passwordHash: string }>;
   clients: Client[];
@@ -88,6 +99,7 @@ interface DatabaseSchema {
   billings: Billing[];
   typesOuvrage: string[];
   auditLog: AuditLogEntry[];
+  invitations: Invitation[];
 }
 
 // Default Seed Data
@@ -281,7 +293,8 @@ const DEFAULT_DB: DatabaseSchema = {
       dateEcheance: "2026-06-28"
     }
   ],
-  auditLog: []
+  auditLog: [],
+  invitations: []
 };
 
 // Database state
@@ -309,6 +322,7 @@ function loadDatabase() {
       (db as any).interlocuteurs = loaded.interlocuteurs || [];
       (db as any).tachesType = loaded.tachesType || [];
       (db as any).taches = loaded.taches || [];
+      (db as any).invitations = loaded.invitations || [];
       console.log("Database successfully loaded from", DB_FILE);
     } else {
       saveDatabase();
@@ -1886,6 +1900,171 @@ app.delete("/api/taches/:id", authenticate, requireWritePermission, (req, res) =
   logAudit(actor, "Suppression de tâche", `${deleted.libelle} (affaire: ${deleted.projetId})`);
   res.json({ success: true });
 });
+// --- INVITATIONS API ---
+
+// Génère un token d'invitation signé et lié cryptographiquement à l'email
+// Impossible à réutiliser avec un autre email ou après expiration
+function generateInvitationToken(email: string, expiresAt: string): string {
+  const payload = base64url(JSON.stringify({ email, expiresAt }));
+  const sig = base64url(crypto.createHmac("sha256", JWT_SECRET).update(payload).digest());
+  return `${payload}.${sig}`;
+}
+
+function verifyInvitationToken(token: string, email: string): boolean {
+  try {
+    const [payload, sig] = token.split(".");
+    if (!payload || !sig) return false;
+    const expectedSig = base64url(crypto.createHmac("sha256", JWT_SECRET).update(payload).digest());
+    const sigBuf = Buffer.from(sig);
+    const expectedBuf = Buffer.from(expectedSig);
+    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) return false;
+    const data = JSON.parse(Buffer.from(payload, "base64").toString("utf-8"));
+    // Vérifier que le token correspond bien à cet email et n'est pas expiré
+    return data.email === email && new Date(data.expiresAt) > new Date();
+  } catch { return false; }
+}
+
+// POST /api/invitations — Créer une invitation (Admin uniquement)
+app.post("/api/invitations", authenticate, requireAdmin, (req, res) => {
+  const { email, nom, role } = req.body;
+  if (!email || !nom) {
+    res.status(400).json({ error: "Email et nom sont obligatoires." });
+    return;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // Vérifier que cet email n'a pas déjà un compte
+  if (db.users.some(u => u.email.toLowerCase() === normalizedEmail)) {
+    res.status(400).json({ error: "Un compte existe déjà avec cet email." });
+    return;
+  }
+
+  const actor = (req as any).user as User;
+  if (!(db as any).invitations) (db as any).invitations = [];
+
+  // Invalider les anciennes invitations en attente pour cet email
+  (db as any).invitations = (db as any).invitations.filter((i: any) => i.email !== normalizedEmail || i.used);
+
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const token = generateInvitationToken(normalizedEmail, expiresAt);
+  const invitation: Invitation = {
+    id: "inv_" + Math.random().toString(36).substring(2, 9),
+    email: normalizedEmail,
+    nom: nom.trim(),
+    token,
+    role: role || "Lecteur",
+    createdAt: new Date().toISOString(),
+    expiresAt,
+    used: false
+  };
+
+  (db as any).invitations.push(invitation);
+  saveDatabase();
+  logAudit(actor, "Invitation envoyée", `${normalizedEmail} (${nom.trim()}) — rôle : ${role || "Lecteur"}`);
+
+  // Retourner le lien d'invitation
+  const baseUrl = process.env.FRONTEND_URL || "https://logiciel-sous-traitance-production.up.railway.app";
+  const invitationLink = `${baseUrl}/invite?token=${encodeURIComponent(token)}&email=${encodeURIComponent(normalizedEmail)}`;
+
+  res.json({ success: true, invitationLink, invitation });
+});
+
+// GET /api/invitations — Liste des invitations (Admin uniquement)
+app.get("/api/invitations", authenticate, requireAdmin, (req, res) => {
+  const invitations = (db as any).invitations || [];
+  res.json(invitations.filter((i: any) => !i.used));
+});
+
+// DELETE /api/invitations/:id — Révoquer une invitation (Admin uniquement)
+app.delete("/api/invitations/:id", authenticate, requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const list = (db as any).invitations || [];
+  const index = list.findIndex((i: any) => i.id === id);
+  if (index === -1) { res.status(404).json({ error: "Invitation introuvable" }); return; }
+  list.splice(index, 1);
+  (db as any).invitations = list;
+  saveDatabase();
+  res.json({ success: true });
+});
+
+// POST /api/auth/accept-invitation — Créer un compte via lien d'invitation
+app.post("/api/auth/accept-invitation", async (req, res) => {
+  const { token, email, password } = req.body;
+  if (!token || !email || !password) {
+    res.status(400).json({ error: "Tous les champs sont requis." });
+    return;
+  }
+  if (String(password).length < 8) {
+    res.status(400).json({ error: "Le mot de passe doit comporter au moins 8 caractères." });
+    return;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const invitations = (db as any).invitations || [];
+  const invitation = invitations.find((i: any) => i.email === normalizedEmail && !i.used);
+
+  if (!invitation) {
+    res.status(400).json({ error: "Invitation introuvable ou déjà utilisée." });
+    return;
+  }
+  if (!verifyInvitationToken(token, normalizedEmail)) {
+    res.status(400).json({ error: "Lien d'invitation invalide ou expiré." });
+    return;
+  }
+  if (db.users.some(u => u.email.toLowerCase() === normalizedEmail)) {
+    res.status(400).json({ error: "Un compte existe déjà avec cet email." });
+    return;
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser: User & { passwordHash: string } = {
+      id: "u_" + Math.random().toString(36).substring(2, 9),
+      email: normalizedEmail,
+      nom: invitation.nom,
+      role: invitation.role as UserRole,
+      status: UserStatus.APPROVED, // Directement approuvé
+      createdAt: new Date().toISOString(),
+      passwordHash: hashedPassword
+    };
+
+    db.users.push(newUser);
+    invitation.used = true; // Invalider l'invitation
+    saveDatabase();
+    syncToFirestore("users", newUser.id, newUser);
+
+    const sessionToken = generateToken(newUser.id);
+    res.json({
+      success: true,
+      token: sessionToken,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        nom: newUser.nom,
+        role: newUser.role,
+        status: newUser.status
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Erreur serveur lors de la création du compte." });
+  }
+});
+
+// GET /api/auth/check-invitation — Vérifier la validité d'un token d'invitation
+app.get("/api/auth/check-invitation", (req, res) => {
+  const { token, email } = req.query as { token: string; email: string };
+  if (!token || !email) { res.status(400).json({ valid: false }); return; }
+  const normalizedEmail = decodeURIComponent(email).trim().toLowerCase();
+  const invitations = (db as any).invitations || [];
+  const invitation = invitations.find((i: any) => i.email === normalizedEmail && !i.used);
+  if (!invitation || !verifyInvitationToken(decodeURIComponent(token), normalizedEmail)) {
+    res.json({ valid: false, error: "Lien invalide ou expiré." });
+    return;
+  }
+  res.json({ valid: true, nom: invitation.nom, email: normalizedEmail, role: invitation.role });
+});
+
+
 // --- AUDIT LOG API (Admin Only) ---
 // Consultation du journal des actions sensibles (suppressions, changements de droits, mots de passe...).
 app.get("/api/audit-log", authenticate, requireAdmin, (req, res) => {

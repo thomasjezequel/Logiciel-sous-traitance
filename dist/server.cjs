@@ -249,7 +249,8 @@ var DEFAULT_DB = {
       dateEcheance: "2026-06-28"
     }
   ],
-  auditLog: []
+  auditLog: [],
+  invitations: []
 };
 var db = { ...DEFAULT_DB };
 function loadDatabase() {
@@ -271,6 +272,7 @@ function loadDatabase() {
       db.interlocuteurs = loaded.interlocuteurs || [];
       db.tachesType = loaded.tachesType || [];
       db.taches = loaded.taches || [];
+      db.invitations = loaded.invitations || [];
       console.log("Database successfully loaded from", DB_FILE);
     } else {
       saveDatabase();
@@ -1613,6 +1615,147 @@ app.delete("/api/taches/:id", authenticate, requireWritePermission, (req, res) =
   deleteFromFirestore("taches", req.params.id);
   logAudit(actor, "Suppression de t\xE2che", `${deleted.libelle} (affaire: ${deleted.projetId})`);
   res.json({ success: true });
+});
+function generateInvitationToken(email, expiresAt) {
+  const payload = base64url(JSON.stringify({ email, expiresAt }));
+  const sig = base64url(import_crypto.default.createHmac("sha256", JWT_SECRET).update(payload).digest());
+  return `${payload}.${sig}`;
+}
+function verifyInvitationToken(token, email) {
+  try {
+    const [payload, sig] = token.split(".");
+    if (!payload || !sig) return false;
+    const expectedSig = base64url(import_crypto.default.createHmac("sha256", JWT_SECRET).update(payload).digest());
+    const sigBuf = Buffer.from(sig);
+    const expectedBuf = Buffer.from(expectedSig);
+    if (sigBuf.length !== expectedBuf.length || !import_crypto.default.timingSafeEqual(sigBuf, expectedBuf)) return false;
+    const data = JSON.parse(Buffer.from(payload, "base64").toString("utf-8"));
+    return data.email === email && new Date(data.expiresAt) > /* @__PURE__ */ new Date();
+  } catch {
+    return false;
+  }
+}
+app.post("/api/invitations", authenticate, requireAdmin, (req, res) => {
+  const { email, nom, role } = req.body;
+  if (!email || !nom) {
+    res.status(400).json({ error: "Email et nom sont obligatoires." });
+    return;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  if (db.users.some((u) => u.email.toLowerCase() === normalizedEmail)) {
+    res.status(400).json({ error: "Un compte existe d\xE9j\xE0 avec cet email." });
+    return;
+  }
+  const actor = req.user;
+  if (!db.invitations) db.invitations = [];
+  db.invitations = db.invitations.filter((i) => i.email !== normalizedEmail || i.used);
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1e3).toISOString();
+  const token = generateInvitationToken(normalizedEmail, expiresAt);
+  const invitation = {
+    id: "inv_" + Math.random().toString(36).substring(2, 9),
+    email: normalizedEmail,
+    nom: nom.trim(),
+    token,
+    role: role || "Lecteur",
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    expiresAt,
+    used: false
+  };
+  db.invitations.push(invitation);
+  saveDatabase();
+  logAudit(actor, "Invitation envoy\xE9e", `${normalizedEmail} (${nom.trim()}) \u2014 r\xF4le : ${role || "Lecteur"}`);
+  const baseUrl = process.env.FRONTEND_URL || "https://logiciel-sous-traitance-production.up.railway.app";
+  const invitationLink = `${baseUrl}/invite?token=${encodeURIComponent(token)}&email=${encodeURIComponent(normalizedEmail)}`;
+  res.json({ success: true, invitationLink, invitation });
+});
+app.get("/api/invitations", authenticate, requireAdmin, (req, res) => {
+  const invitations = db.invitations || [];
+  res.json(invitations.filter((i) => !i.used));
+});
+app.delete("/api/invitations/:id", authenticate, requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const list = db.invitations || [];
+  const index = list.findIndex((i) => i.id === id);
+  if (index === -1) {
+    res.status(404).json({ error: "Invitation introuvable" });
+    return;
+  }
+  list.splice(index, 1);
+  db.invitations = list;
+  saveDatabase();
+  res.json({ success: true });
+});
+app.post("/api/auth/accept-invitation", async (req, res) => {
+  const { token, email, password } = req.body;
+  if (!token || !email || !password) {
+    res.status(400).json({ error: "Tous les champs sont requis." });
+    return;
+  }
+  if (String(password).length < 8) {
+    res.status(400).json({ error: "Le mot de passe doit comporter au moins 8 caract\xE8res." });
+    return;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  const invitations = db.invitations || [];
+  const invitation = invitations.find((i) => i.email === normalizedEmail && !i.used);
+  if (!invitation) {
+    res.status(400).json({ error: "Invitation introuvable ou d\xE9j\xE0 utilis\xE9e." });
+    return;
+  }
+  if (!verifyInvitationToken(token, normalizedEmail)) {
+    res.status(400).json({ error: "Lien d'invitation invalide ou expir\xE9." });
+    return;
+  }
+  if (db.users.some((u) => u.email.toLowerCase() === normalizedEmail)) {
+    res.status(400).json({ error: "Un compte existe d\xE9j\xE0 avec cet email." });
+    return;
+  }
+  try {
+    const hashedPassword = await import_bcryptjs.default.hash(password, 10);
+    const newUser = {
+      id: "u_" + Math.random().toString(36).substring(2, 9),
+      email: normalizedEmail,
+      nom: invitation.nom,
+      role: invitation.role,
+      status: "Approuv\xE9" /* APPROVED */,
+      // Directement approuvé
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      passwordHash: hashedPassword
+    };
+    db.users.push(newUser);
+    invitation.used = true;
+    saveDatabase();
+    syncToFirestore("users", newUser.id, newUser);
+    const sessionToken = generateToken(newUser.id);
+    res.json({
+      success: true,
+      token: sessionToken,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        nom: newUser.nom,
+        role: newUser.role,
+        status: newUser.status
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Erreur serveur lors de la cr\xE9ation du compte." });
+  }
+});
+app.get("/api/auth/check-invitation", (req, res) => {
+  const { token, email } = req.query;
+  if (!token || !email) {
+    res.status(400).json({ valid: false });
+    return;
+  }
+  const normalizedEmail = decodeURIComponent(email).trim().toLowerCase();
+  const invitations = db.invitations || [];
+  const invitation = invitations.find((i) => i.email === normalizedEmail && !i.used);
+  if (!invitation || !verifyInvitationToken(decodeURIComponent(token), normalizedEmail)) {
+    res.json({ valid: false, error: "Lien invalide ou expir\xE9." });
+    return;
+  }
+  res.json({ valid: true, nom: invitation.nom, email: normalizedEmail, role: invitation.role });
 });
 app.get("/api/audit-log", authenticate, requireAdmin, (req, res) => {
   const sorted = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());

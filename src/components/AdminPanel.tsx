@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { User, UserRole, UserStatus, Project, Client } from "../types";
 import { api } from "../lib/api";
-import { UserCheck, ShieldAlert, Trash2, Shield, Eye, Edit2, AlertCircle, ListTodo } from "lucide-react";
+import { UserCheck, ShieldAlert, Trash2, Shield, Eye, Edit2, AlertCircle, ListTodo, Mail, Copy, Check, UserPlus, Link } from "lucide-react";
 
 interface AdminPanelProps {
   currentUser: User;
@@ -27,6 +27,15 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
   const [tachesType, setTachesType] = useState<{ id: string; libelle: string }[]>([]);
   const [newTacheType, setNewTacheType] = useState("");
   const [tacheTypeLoading, setTacheTypeLoading] = useState(false);
+
+  // ── Invitations ──────────────────────────────────────────────────────────
+  const [invitations, setInvitations] = useState<any[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteNom, setInviteNom] = useState("");
+  const [inviteRole, setInviteRole] = useState("Lecteur");
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Custom confirmation state for user deletion to safety-bypass iframes
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<{
@@ -75,6 +84,13 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
     }
   };
 
+  const fetchInvitations = async () => {
+    try {
+      const list = await api.request("/api/invitations");
+      setInvitations(list);
+    } catch { setInvitations([]); }
+  };
+
   const fetchUsers = async () => {
     try {
       setLoading(true);
@@ -97,7 +113,47 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
     fetchClients();
     fetchTypesOuvrage();
     fetchTachesType();
+    fetchInvitations();
   }, []);
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim() || !inviteNom.trim()) {
+      setError("Email et nom sont obligatoires."); return;
+    }
+    try {
+      setError(null); setSuccess(null);
+      setInviteLoading(true);
+      const res = await api.request<any>("/api/invitations", {
+        method: "POST",
+        body: JSON.stringify({ email: inviteEmail.trim(), nom: inviteNom.trim(), role: inviteRole })
+      });
+      setInviteLink(res.invitationLink);
+      setInviteEmail(""); setInviteNom(""); setInviteRole("Lecteur");
+      setSuccess(`Invitation créée pour ${res.invitation.email} — valide 7 jours.`);
+      fetchInvitations();
+    } catch (err: any) {
+      setError(err?.message || "Erreur lors de la création de l'invitation.");
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleRevokeInvitation = async (id: string) => {
+    try {
+      await api.request(`/api/invitations/${id}`, { method: "DELETE" });
+      setSuccess("Invitation révoquée.");
+      fetchInvitations();
+    } catch (err: any) {
+      setError(err?.message || "Erreur lors de la révocation.");
+    }
+  };
+
+  const handleCopyLink = (link: string) => {
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const handleAddOuvrage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -497,6 +553,106 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
           </div>
         </div>
       )}
+
+      {/* ── Section Invitations ── */}
+      <div className="mt-8 pt-8 border-t border-slate-100">
+        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-2 flex items-center gap-2">
+          <UserPlus className="w-4 h-4 text-teal-600" />
+          Inviter un nouveau collaborateur
+        </h3>
+        <p className="text-xs text-slate-500 mb-4">
+          Générez un lien d'invitation unique lié à l'adresse email du collaborateur. Seule cette adresse pourra créer un compte — le lien est inutilisable avec un autre email et expire après 7 jours.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3 max-w-2xl">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase font-mono block mb-1">Prénom et Nom *</label>
+            <input type="text" value={inviteNom} onChange={e => setInviteNom(e.target.value)}
+              placeholder="ex: Jean Dupont"
+              className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase font-mono block mb-1">Adresse email *</label>
+            <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
+              placeholder="ex: jean.dupont@emg.bzh"
+              className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase font-mono block mb-1">Rôle attribué</label>
+            <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
+              className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white">
+              <option value="Lecteur">Lecteur (Lecture seule)</option>
+              <option value="Éditeur">Éditeur (Lecture & Écriture)</option>
+              <option value="Administrateur">Administrateur (Accès total)</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="button" onClick={handleInvite} disabled={inviteLoading || !inviteEmail.trim() || !inviteNom.trim()}
+          className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-lg px-4 py-2 flex items-center gap-2 transition disabled:opacity-40 disabled:cursor-not-allowed">
+          <Link className="w-3.5 h-3.5" />
+          {inviteLoading ? "Génération..." : "Générer le lien d'invitation"}
+        </button>
+
+        {/* Lien généré */}
+        {inviteLink && (
+          <div className="mt-4 p-4 bg-teal-50 border border-teal-200 rounded-xl max-w-2xl">
+            <div className="flex items-center gap-2 mb-2">
+              <Mail className="w-4 h-4 text-teal-600" />
+              <span className="text-xs font-bold text-teal-800">Lien d'invitation généré — à envoyer manuellement</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="text-[10px] text-teal-900 bg-white border border-teal-200 rounded px-2 py-1.5 flex-1 break-all font-mono">
+                {inviteLink}
+              </code>
+              <button onClick={() => handleCopyLink(inviteLink)}
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${copied ? "bg-emerald-600 text-white" : "bg-teal-600 hover:bg-teal-700 text-white"}`}>
+                {copied ? <><Check className="w-3.5 h-3.5" /> Copié !</> : <><Copy className="w-3.5 h-3.5" /> Copier</>}
+              </button>
+            </div>
+            <p className="text-[10px] text-teal-700 mt-2 italic">
+              ⚠️ Copiez ce lien et envoyez-le par email, Teams ou tout autre canal sécurisé. Il expire dans 7 jours et ne peut être utilisé qu'une seule fois avec l'adresse email spécifiée.
+            </p>
+          </div>
+        )}
+
+        {/* Liste des invitations en attente */}
+        {invitations.length > 0 && (
+          <div className="mt-5">
+            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono mb-2">
+              Invitations en attente ({invitations.length})
+            </h4>
+            <div className="space-y-2 max-w-2xl">
+              {invitations.map(inv => (
+                <div key={inv.id} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800">{inv.nom}</span>
+                    <span className="text-[10px] text-slate-500 font-mono ml-2">{inv.email}</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-2 ${inv.role === "Administrateur" ? "bg-red-100 text-red-700" : inv.role === "Éditeur" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
+                      {inv.role}
+                    </span>
+                    <span className="text-[9px] text-slate-400 ml-2">
+                      expire le {new Date(inv.expiresAt).toLocaleDateString("fr-FR")}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => handleCopyLink(`${window.location.origin}/invite?token=${encodeURIComponent(inv.token)}&email=${encodeURIComponent(inv.email)}`)}
+                      title="Copier le lien"
+                      className="p-1.5 text-slate-400 hover:text-teal-600 rounded transition">
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => handleRevokeInvitation(inv.id)}
+                      title="Révoquer l'invitation"
+                      className="p-1.5 text-slate-400 hover:text-red-500 rounded transition">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ── Section Types d'ouvrage ── */}
       <div className="mt-8 pt-8 border-t border-slate-100">

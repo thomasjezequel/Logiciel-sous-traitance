@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from "react";
-import { Project, Billing, Tache, Client, Subcontractor } from "../types";
+import { Project, Billing, Tache, Client, Subcontractor, Interlocuteur } from "../types";
 import { ChevronLeft, ChevronRight, Calendar, Printer, X, Download } from "lucide-react";
+import flowfabLogo from "../assets/images/flowfab_logo_1780546723025.png";
 
 interface CalendarEvent {
   date: string; // YYYY-MM-DD
@@ -10,6 +11,8 @@ interface CalendarEvent {
   color: string;
   bgColor: string;
   overdue?: boolean;
+  tacheId?: string;        // ID de la tâche pour retrouver description + interlocuteur
+  interlocuteurId?: string; // ID de l'interlocuteur assigné
 }
 
 interface CalendarViewProps {
@@ -18,6 +21,7 @@ interface CalendarViewProps {
   taches: Tache[];
   clients: Client[];
   subcontractors: Subcontractor[];
+  interlocuteurs: Interlocuteur[];
 }
 
 const TYPE_CONFIG = {
@@ -29,7 +33,7 @@ const TYPE_CONFIG = {
   facturation: { label: "Facturation",           color: "text-amber-800",  bgColor: "bg-amber-100",  border: "border-amber-300" },
 };
 
-export default function CalendarView({ projects, billings, taches, clients, subcontractors }: CalendarViewProps) {
+export default function CalendarView({ projects, billings, taches, clients, subcontractors, interlocuteurs }: CalendarViewProps) {
   const today = new Date();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth()); // 0-indexed
@@ -107,27 +111,20 @@ export default function CalendarView({ projects, billings, taches, clients, subc
     const getFg = (type: string) => ({ appro:"#1d4ed8", tracage:"#7e22ce", protection:"#c2410c", livraison:"#0f766e", tache:"#4338ca", facturation:"#b45309" }[type] || "#334155");
     const getTypeLabel = (type: string) => ({ appro:"Appro", tracage:"Traçage", protection:"Protection", livraison:"Livraison", tache:"Tâche", facturation:"Facturation" }[type] || type);
 
-    // Logo FlowFab converti en base64 pour l'impression
-    const logoBase64 = await new Promise<string>((resolve) => {
+    // Logo FlowFab — converti en base64 via canvas pour l'impression
+    const logoSvg = await new Promise<string>((resolve) => {
       const img = new Image();
-      img.crossOrigin = "anonymous";
       img.onload = () => {
         const canvas = document.createElement("canvas");
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
         const ctx = canvas.getContext("2d");
         ctx?.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/png"));
+        resolve(`<img src="${canvas.toDataURL("image/png")}" style="width:40px;height:40px;object-fit:contain;" />`);
       };
-      img.onerror = () => resolve(""); // fallback silencieux
-      img.src = "/src/assets/images/flowfab_logo_1780546723025.png";
+      img.onerror = () => resolve(`<svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg"><rect width="36" height="36" rx="8" fill="#0d9488"/><text x="18" y="26" font-family="Arial" font-weight="bold" font-size="22" fill="white" text-anchor="middle">F</text></svg>`);
+      img.src = flowfabLogo;
     });
-    const logoSvg = logoBase64
-      ? `<img src="${logoBase64}" style="width:40px;height:40px;object-fit:contain;" />`
-      : `<svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
-          <rect width="36" height="36" rx="8" fill="#0d9488"/>
-          <text x="18" y="26" font-family="Arial" font-weight="bold" font-size="22" fill="white" text-anchor="middle">F</text>
-        </svg>`;
 
     // En-tête commun aux deux pages
     const header = (title: string) => `
@@ -229,9 +226,23 @@ export default function CalendarView({ projects, billings, taches, clients, subc
             </div>`;
         byDate[date].forEach(ev => {
           // Trouver le projet lié pour récupérer client et sous-traitant
-          const proj = projects.find(p => p.id === filteredEvts.find(fe => fe.date === date && fe.label === ev.label && fe.type === ev.type)?.projectName?.split("—")[0]?.trim() || "");
-          const clientNom = clients.find(c => c.id === (projects.find(p => `${p.nomAffaire} — ${p.nomZone}` === ev.projectName)?.clientId))?.nom || "";
-          const subNom = subcontractors.find(s => s.id === (projects.find(p => `${p.nomAffaire} — ${p.nomZone}` === ev.projectName)?.sousTraitantId))?.nom || "";
+          const projLie = projects.find(p => `${p.nomAffaire} — ${p.nomZone}` === ev.projectName);
+          const clientNom = clients.find(c => c.id === projLie?.clientId)?.nom || "";
+          const subNom = subcontractors.find(s => s.id === projLie?.sousTraitantId)?.nom || "";
+
+          // Pour les tâches : récupérer description et interlocuteur via les IDs stockés dans l'événement
+          let descriptionTache = "";
+          let interlocuteurNom = "";
+          if (ev.type === "tache") {
+            const tache = ev.tacheId ? taches.find(t => t.id === ev.tacheId) : undefined;
+            if (tache) {
+              descriptionTache = (tache as any).description || "";
+            }
+            if (ev.interlocuteurId) {
+              const inter = interlocuteurs.find(i => i.id === ev.interlocuteurId);
+              interlocuteurNom = inter ? `${inter.prenom} ${inter.nom}` : "";
+            }
+          }
 
           listHtml += `
             <div style="display:flex;align-items:flex-start;gap:10px;padding:5px 8px;background:${getBg(ev.type)}30;border-radius:5px;margin-bottom:4px;">
@@ -243,6 +254,8 @@ export default function CalendarView({ projects, billings, taches, clients, subc
                   ${clientNom ? `<div style="font-size:8px;color:#64748b;">👤 Client : <strong>${clientNom}</strong></div>` : ""}
                   ${subNom ? `<div style="font-size:8px;color:#64748b;">🏭 Sous-traitant : <strong>${subNom}</strong></div>` : ""}
                 </div>
+                ${interlocuteurNom ? `<div style="font-size:8px;color:#4338ca;margin-top:2px;">👤 Assigné à : <strong>${interlocuteurNom}</strong></div>` : ""}
+                ${descriptionTache ? `<div style="font-size:8px;color:#64748b;margin-top:2px;font-style:italic;">ℹ️ ${descriptionTache}</div>` : ""}
               </div>
             </div>`;
         });
@@ -375,11 +388,13 @@ export default function CalendarView({ projects, billings, taches, clients, subc
         const proj = projects.find(p => p.id === t.projetId);
         events.push({
           date: t.dateEcheance,
-          label: t.libelle,
           type: "tache",
           projectName: proj ? `${proj.nomAffaire} — ${proj.nomZone}` : "",
           overdue: t.dateEcheance < todayStr,
+          tacheId: t.id,
+          interlocuteurId: t.interlocuteurId,
           ...TYPE_CONFIG.tache,
+          label: t.libelle, // après le spread pour ne pas être écrasé par TYPE_CONFIG.tache
           bgColor: t.dateEcheance < todayStr ? "bg-red-100" : "bg-indigo-100",
           color: t.dateEcheance < todayStr ? "text-red-800" : "text-indigo-800"
         });

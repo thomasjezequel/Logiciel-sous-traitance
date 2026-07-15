@@ -77,6 +77,21 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isLoginView, setIsLoginView] = useState(true); // Login vs Register tab
+
+  // Détection d'un lien d'invitation dans l'URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const inviteToken = urlParams.get("token");
+  const inviteEmail = urlParams.get("email");
+  const isInvitePage = window.location.pathname === "/invite" && !!inviteToken && !!inviteEmail;
+
+  // States pour la page d'invitation
+  const [invitePassword, setInvitePassword] = useState("");
+  const [invitePassword2, setInvitePassword2] = useState("");
+  const [inviteCheckLoading, setInviteCheckLoading] = useState(false);
+  const [inviteCheckResult, setInviteCheckResult] = useState<any>(null);
+  const [inviteSubmitLoading, setInviteSubmitLoading] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState(false);
   
   // Auth form states
   const [emailInput, setEmailInput] = useState("");
@@ -249,7 +264,7 @@ export default function App() {
     setFilterDateFin(end);
   };
 
-  // Load user session on boot
+  // Load user session on boot + vérifier token d'invitation
   useEffect(() => {
     const fetchSession = async () => {
       try {
@@ -265,6 +280,15 @@ export default function App() {
       }
     };
     fetchSession();
+
+    // Si on est sur la page d'invitation, vérifier le token
+    if (isInvitePage && inviteToken && inviteEmail) {
+      setInviteCheckLoading(true);
+      api.request<any>(`/api/auth/check-invitation?token=${encodeURIComponent(inviteToken)}&email=${encodeURIComponent(inviteEmail)}`)
+        .then(res => setInviteCheckResult(res))
+        .catch(() => setInviteCheckResult({ valid: false, error: "Erreur de vérification." }))
+        .finally(() => setInviteCheckLoading(false));
+    }
   }, []);
 
   // Fetch all database records when user is approved
@@ -858,6 +882,99 @@ export default function App() {
   };
 
   // Render authenticating screen
+  // ── Page d'acceptation d'invitation ──────────────────────────────────────
+  if (isInvitePage && !user) {
+    const handleAcceptInvite = async () => {
+      if (invitePassword !== invitePassword2) {
+        setInviteError("Les mots de passe ne correspondent pas."); return;
+      }
+      if (invitePassword.length < 8) {
+        setInviteError("Le mot de passe doit comporter au moins 8 caractères."); return;
+      }
+      try {
+        setInviteSubmitLoading(true); setInviteError(null);
+        const res = await api.request<any>("/api/auth/accept-invitation", {
+          method: "POST",
+          body: JSON.stringify({ token: inviteToken, email: inviteEmail, password: invitePassword })
+        });
+        api.setToken(res.token);
+        setInviteSuccess(true);
+        setTimeout(() => { window.location.href = "/"; }, 2000);
+      } catch (err: any) {
+        setInviteError(err?.message || "Erreur lors de la création du compte.");
+      } finally {
+        setInviteSubmitLoading(false);
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="bg-teal-600 px-8 py-6 text-white">
+            <div className="flex items-center gap-3 mb-2">
+              <img src={flowfabLogo} alt="FlowFab" className="w-8 h-8 object-contain rounded bg-white p-0.5" />
+              <span className="text-lg font-black tracking-widest">FLOW<span className="text-teal-200">FAB</span></span>
+            </div>
+            <h1 className="text-xl font-bold">Invitation à rejoindre FlowFab</h1>
+            <p className="text-teal-100 text-sm mt-1">Créez votre mot de passe pour accéder à l'application</p>
+          </div>
+          <div className="p-8">
+            {inviteCheckLoading && (
+              <div className="text-center py-8 text-slate-400">
+                <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                Vérification du lien...
+              </div>
+            )}
+            {!inviteCheckLoading && inviteCheckResult?.valid === false && (
+              <div className="text-center py-8">
+                <div className="text-4xl mb-3">🔒</div>
+                <p className="text-red-600 font-bold">Lien invalide ou expiré</p>
+                <p className="text-slate-400 text-sm mt-2">{inviteCheckResult.error}</p>
+                <a href="/" className="mt-4 inline-block text-teal-600 hover:underline text-sm">Retour à la connexion</a>
+              </div>
+            )}
+            {!inviteCheckLoading && inviteCheckResult?.valid && !inviteSuccess && (
+              <div className="space-y-4">
+                <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg">
+                  <p className="text-xs font-bold text-teal-800">Compte pour :</p>
+                  <p className="text-sm font-bold text-slate-900">{inviteCheckResult.nom}</p>
+                  <p className="text-xs text-slate-500 font-mono">{inviteCheckResult.email}</p>
+                  <p className="text-[10px] text-teal-700 mt-1">Rôle : <strong>{inviteCheckResult.role}</strong></p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Choisissez votre mot de passe *</label>
+                  <input type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)}
+                    placeholder="8 caractères minimum"
+                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2.5 focus:outline-teal-500" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Confirmez votre mot de passe *</label>
+                  <input type="password" value={invitePassword2} onChange={e => setInvitePassword2(e.target.value)}
+                    placeholder="Retapez votre mot de passe"
+                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2.5 focus:outline-teal-500" />
+                </div>
+                {inviteError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs">{inviteError}</div>
+                )}
+                <button onClick={handleAcceptInvite} disabled={inviteSubmitLoading}
+                  className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-lg transition text-sm">
+                  {inviteSubmitLoading ? "Création du compte..." : "Créer mon compte et accéder à FlowFab"}
+                </button>
+              </div>
+            )}
+            {inviteSuccess && (
+              <div className="text-center py-8">
+                <div className="text-4xl mb-3">✅</div>
+                <p className="text-teal-700 font-bold text-lg">Compte créé avec succès !</p>
+                <p className="text-slate-400 text-sm mt-2">Redirection en cours...</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center text-white p-4">
@@ -2373,6 +2490,7 @@ export default function App() {
                 taches={taches}
                 clients={permittedClients}
                 subcontractors={subcontractors}
+                interlocuteurs={interlocuteurs}
               />
             )}
 
