@@ -385,7 +385,9 @@ export default function DashboardPrintModal({
                   <thead>
                     <tr className="bg-slate-100 font-bold text-slate-700">
                       <th className="px-2.5 py-1.5 border border-slate-200">Affaire / Zones d'application</th>
+                      <th className="px-2.5 py-1.5 border border-slate-200">Sous-traitant</th>
                       <th className="px-2.5 py-1.5 border border-slate-200 font-mono">Type de Prestation</th>
+                      <th className="px-2.5 py-1.5 border border-slate-200 text-center">Facture reçue</th>
                       <th className="px-2.5 py-1.5 border border-slate-200 text-right">Etat</th>
                       <th className="px-2.5 py-1.5 border border-slate-200 text-right">Date Échéance</th>
                       <th className="px-2.5 py-1.5 border border-slate-200 text-right">Montant H.T.</th>
@@ -405,7 +407,16 @@ export default function DashboardPrintModal({
                           <td className="px-2.5 py-1.5 border border-slate-200 font-semibold uppercase">
                             {primaryProj?.nomAffaire || "Affaire"} ({allZones || `Id: ${b.projetId}`})
                           </td>
+                          <td className="px-2.5 py-1.5 border border-slate-200 font-semibold text-indigo-700">
+                            {subcontractors.find(s => s.id === primaryProj?.sousTraitantId)?.nom || "—"}
+                          </td>
                           <td className="px-2.5 py-1.5 border border-slate-200 font-medium text-slate-500">{b.typePrestation}</td>
+                          <td className="px-2.5 py-1.5 border border-slate-200 text-center">
+                            {b.factureRecue
+                              ? <span className="text-emerald-600 font-bold text-sm" title="Facture reçue">✅</span>
+                              : <span className="text-red-500 font-bold text-sm" title="Facture non reçue">❌</span>
+                            }
+                          </td>
                           <td className="px-2.5 py-1.5 border border-slate-200 text-right">
                             <span className={`px-1 rounded-sm text-[9px] font-bold ${b.etatFacturation === BillingStatus.ENVOYEE ? "bg-amber-100 text-amber-800" : "bg-slate-150 text-slate-800"}`}>
                               {b.etatFacturation === BillingStatus.ENVOYEE ? "ENVOYÉE" : "BROUILLON"}
