@@ -58,7 +58,11 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
 const handleExportAudit = async () => {
   try {
     const token = api.getToken();
-    const response = await fetch("/api/audit-log/export", {
+    const params = new URLSearchParams();
+    if (auditCategorie) params.set("categorie", auditCategorie);
+    if (auditActeur) params.set("actorEmail", auditActeur);
+
+    const response = await fetch(`/api/audit-log/export?${params.toString()}`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },

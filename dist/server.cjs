@@ -1796,7 +1796,10 @@ app.get("/api/audit-log", authenticate, requireAdmin, (req, res) => {
   res.json(entries);
 });
 app.get("/api/audit-log/export", authenticate, requireAdmin, (req, res) => {
-  const entries = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const { categorie, actorEmail } = req.query;
+  let entries = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  if (categorie) entries = entries.filter((e) => e.categorie === categorie);
+  if (actorEmail) entries = entries.filter((e) => e.actorEmail === actorEmail);
   const header = "Date/Heure;Utilisateur;Email;Cat\xE9gorie;Action;D\xE9tail;IP\n";
   const rows = entries.map((e) => {
     const date = new Date(e.timestamp).toLocaleString("fr-FR");
