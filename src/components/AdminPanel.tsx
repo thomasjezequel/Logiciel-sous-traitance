@@ -55,9 +55,32 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
     finally { setAuditLoading(false); }
   };
 
-  const handleExportAudit = () => {
-    window.open("/api/audit-log/export", "_blank");
-  };
+const handleExportAudit = async () => {
+  try {
+    const token = api.getToken();
+    const response = await fetch("/api/audit-log/export", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error("L'export a échoué (statut " + response.status + ")");
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `flowfab-historique-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    setError("Erreur lors de l'export de l'historique.");
+  }
+};
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<{
     isOpen: boolean;
     userId: string;
