@@ -81,6 +81,95 @@ html, body {
   font-weight: 700 !important;
 }
 
+/* ==========================================================================
+   Overrides mode sombre pour les badges, alertes, étiquettes et formulaires
+   colorés (Calendrier, Tâches, Dashboard, Profil).
+   Même principe que les règles ci-dessus : les fonds pastel (50/100) et
+   textes très saturés (600 à 950), pensés pour un fond clair, sont remplacés
+   par des teintes adaptées à un fond sombre. Les couleurs "pleines" utilisées
+   pour les boutons (500 à 700 sans variante pastel) ne sont pas touchées :
+   elles restent lisibles telles quelles sur fond sombre.
+   ========================================================================== */
+
+/* --- TEAL --- */
+.dark .bg-teal-50, .dark .bg-teal-50\/30, .dark .bg-teal-50\/50, .dark .bg-teal-50\/60 {
+  background-color: rgba(20, 184, 166, 0.12) !important;
+}
+.dark .bg-teal-100 { background-color: rgba(20, 184, 166, 0.18) !important; }
+.dark .bg-teal-700\/60 { background-color: rgba(15, 118, 110, 0.6) !important; }
+.dark .text-teal-600, .dark .text-teal-700, .dark .text-teal-800, .dark .text-teal-850, .dark .text-teal-900 {
+  color: #5eead4 !important; /* teal-300 */
+}
+.dark .text-teal-300\/40, .dark .text-teal-300\/50 { color: #5eead4 !important; }
+.dark .border-teal-200, .dark .border-teal-300, .dark .border-teal-400, .dark .border-teal-500 {
+  border-color: rgba(45, 212, 191, 0.45) !important;
+}
+
+/* --- ROUGE (red) --- */
+.dark .bg-red-50, .dark .bg-red-50\/20, .dark .bg-red-50\/50, .dark .bg-red-50\/60 {
+  background-color: rgba(239, 68, 68, 0.12) !important;
+}
+.dark .bg-red-100 { background-color: rgba(239, 68, 68, 0.18) !important; }
+.dark .text-red-400, .dark .text-red-500, .dark .text-red-600, .dark .text-red-700, .dark .text-red-800, .dark .text-red-850 {
+  color: #fca5a5 !important; /* red-300 */
+}
+.dark .border-red-100, .dark .border-red-200, .dark .border-red-300 {
+  border-color: rgba(248, 113, 113, 0.4) !important;
+}
+
+/* --- INDIGO --- */
+.dark .bg-indigo-50, .dark .bg-indigo-50\/40, .dark .bg-indigo-50\/60, .dark .bg-indigo-50\/80 {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+}
+.dark .bg-indigo-100 { background-color: rgba(99, 102, 241, 0.18) !important; }
+.dark .text-indigo-400, .dark .text-indigo-500, .dark .text-indigo-600, .dark .text-indigo-700, .dark .text-indigo-800, .dark .text-indigo-900 {
+  color: #a5b4fc !important; /* indigo-300 */
+}
+.dark .border-indigo-100, .dark .border-indigo-200, .dark .border-indigo-300 {
+  border-color: rgba(129, 140, 248, 0.4) !important;
+}
+
+/* --- AMBRE (amber) --- */
+.dark .bg-amber-50, .dark .bg-amber-50\/20, .dark .bg-amber-50\/40, .dark .bg-amber-50\/50, .dark .bg-amber-50\/60 {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+}
+.dark .bg-amber-100 { background-color: rgba(245, 158, 11, 0.18) !important; }
+.dark .text-amber-400, .dark .text-amber-600, .dark .text-amber-700, .dark .text-amber-800, .dark .text-amber-900 {
+  color: #fcd34d !important; /* amber-300 */
+}
+.dark .border-amber-100, .dark .border-amber-200, .dark .border-amber-200\/50, .dark .border-amber-300 {
+  border-color: rgba(251, 191, 36, 0.4) !important;
+}
+
+/* --- SKY --- */
+.dark .bg-sky-50 { background-color: rgba(14, 165, 233, 0.12) !important; }
+.dark .text-sky-800, .dark .text-sky-850, .dark .text-sky-900 { color: #7dd3fc !important; /* sky-300 */ }
+.dark .border-sky-100, .dark .border-sky-200 { border-color: rgba(56, 189, 248, 0.4) !important; }
+
+/* --- ROSE --- */
+.dark .bg-rose-50\/40, .dark .bg-rose-50\/80 { background-color: rgba(244, 63, 94, 0.12) !important; }
+.dark .bg-rose-100 { background-color: rgba(244, 63, 94, 0.18) !important; }
+.dark .text-rose-400, .dark .text-rose-700, .dark .text-rose-800, .dark .text-rose-950 { color: #fda4af !important; /* rose-300 */ }
+.dark .border-rose-100, .dark .border-rose-200, .dark .border-rose-300 { border-color: rgba(251, 113, 133, 0.4) !important; }
+
+/* --- EMERALD --- */
+.dark .bg-emerald-50, .dark .bg-emerald-50\/30 { background-color: rgba(16, 185, 129, 0.12) !important; }
+.dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.18) !important; }
+.dark .text-emerald-600, .dark .text-emerald-700, .dark .text-emerald-800 { color: #6ee7b7 !important; /* emerald-300 */ }
+
+/* --- PURPLE / ORANGE / BLUE (badges ponctuels) --- */
+.dark .bg-purple-100 { background-color: rgba(168, 85, 247, 0.18) !important; }
+.dark .text-purple-800 { color: #d8b4fe !important; }
+.dark .border-purple-300 { border-color: rgba(192, 132, 252, 0.4) !important; }
+
+.dark .bg-orange-100 { background-color: rgba(249, 115, 22, 0.18) !important; }
+.dark .text-orange-800 { color: #fdba74 !important; }
+.dark .border-orange-300 { border-color: rgba(251, 146, 60, 0.4) !important; }
+
+.dark .bg-blue-100 { background-color: rgba(59, 130, 246, 0.18) !important; }
+.dark .text-blue-800 { color: #93c5fd !important; }
+.dark .border-blue-300 { border-color: rgba(96, 165, 250, 0.4) !important; }
+
 /* Custom styles to prevent layout from breaking and overflow horizontal bars */
 .overflow-x-auto {
   scrollbar-width: thin;
