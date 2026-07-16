@@ -684,7 +684,8 @@ app.post("/api/auth/login", async (req, res) => {
       poste: user.poste,
       allowedClientIds: user.allowedClientIds || [],
       allowedProjectIds: user.allowedProjectIds || [],
-      createdAt: user.createdAt
+      createdAt: user.createdAt,
+      theme: user.theme || "light"
     }
   });
 });
@@ -700,7 +701,8 @@ app.get("/api/auth/me", authenticate, (req, res) => {
       poste: user.poste,
       allowedClientIds: user.allowedClientIds || [],
       allowedProjectIds: user.allowedProjectIds || [],
-      createdAt: user.createdAt
+      createdAt: user.createdAt,
+      theme: user.theme || "light"
     }
   });
 });
@@ -729,6 +731,7 @@ app.put("/api/users/:id", authenticate, requireAdmin, (req, res) => {
   if (allowedClientIds !== void 0) user.allowedClientIds = allowedClientIds;
   if (poste !== void 0) user.poste = poste;
   if (nom !== void 0) user.nom = nom;
+  if (req.body.theme !== void 0) user.theme = req.body.theme;
   if (status !== void 0 && status !== previousStatus) {
     logAudit(currentAdmin, "Changement de statut utilisateur", `${user.email} : ${previousStatus} \u2192 ${status}`);
   }

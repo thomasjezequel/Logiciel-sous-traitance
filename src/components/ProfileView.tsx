@@ -18,10 +18,11 @@ export default function ProfileView({ user, clients }: ProfileViewProps) {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem("theme") || "light";
+    // Priorité au thème sauvegardé dans le profil utilisateur
+    return (user as any).theme || localStorage.getItem("theme") || "light";
   });
 
-  const toggleTheme = () => {
+  const toggleTheme = async () => {
     const nextTheme = theme === "dark" ? "light" : "dark";
     setTheme(nextTheme);
     localStorage.setItem("theme", nextTheme);
@@ -29,6 +30,12 @@ export default function ProfileView({ user, clients }: ProfileViewProps) {
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
+    }
+    // Sauvegarder la préférence sur le serveur (liée au compte utilisateur)
+    try {
+      await api.updateUser(user.id, { theme: nextTheme } as any);
+    } catch {
+      // Silencieux — le localStorage reste le fallback
     }
   };
 

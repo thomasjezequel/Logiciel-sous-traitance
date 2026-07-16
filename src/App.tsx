@@ -272,6 +272,15 @@ export default function App() {
         if (token) {
           const res = await api.getMe();
           setUser(res.user);
+          // Appliquer le thème sauvegardé de l'utilisateur
+          const savedTheme = (res.user as any).theme || localStorage.getItem("theme") || "light";
+          if (savedTheme === "dark") {
+            document.documentElement.classList.add("dark");
+            localStorage.setItem("theme", "dark");
+          } else {
+            document.documentElement.classList.remove("dark");
+            localStorage.setItem("theme", "light");
+          }
         }
       } catch (err) {
         api.setToken(null);
@@ -337,6 +346,15 @@ export default function App() {
       const res = await api.login(emailInput, passwordInput);
       api.setToken(res.token);
       setUser(res.user);
+      // Appliquer le thème sauvegardé de l'utilisateur
+      const savedTheme = (res.user as any).theme || "light";
+      if (savedTheme === "dark") {
+        document.documentElement.classList.add("dark");
+        localStorage.setItem("theme", "dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+        localStorage.setItem("theme", "light");
+      }
     } catch (err: any) {
       setAuthError(err?.message || "Identifiant ou mot de passe incorrect.");
     }

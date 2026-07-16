@@ -13,6 +13,7 @@ interface CalendarEvent {
   overdue?: boolean;
   tacheId?: string;        // ID de la tâche pour retrouver description + interlocuteur
   interlocuteurId?: string; // ID de l'interlocuteur assigné
+  projetId?: string;        // ID du projet principal (factures multi-zones)
 }
 
 interface CalendarViewProps {
@@ -225,8 +226,10 @@ export default function CalendarView({ projects, billings, taches, clients, subc
               ${dateLabel} &nbsp;—&nbsp; S${wn}
             </div>`;
         byDate[date].forEach(ev => {
-          // Trouver le projet lié pour récupérer client et sous-traitant
-          const projLie = projects.find(p => `${p.nomAffaire} — ${p.nomZone}` === ev.projectName);
+          // Trouver le projet lié — via projetId pour les factures multi-zones
+          const projLie = ev.projetId
+            ? projects.find(p => p.id === ev.projetId)
+            : projects.find(p => `${p.nomAffaire} — ${p.nomZone}` === ev.projectName);
           const clientNom = clients.find(c => c.id === projLie?.clientId)?.nom || "";
           const subNom = subcontractors.find(s => s.id === projLie?.sousTraitantId)?.nom || "";
 
@@ -420,6 +423,7 @@ export default function CalendarView({ projects, billings, taches, clients, subc
             label: `Facture ${montant} € — ${proj?.nomAffaire || "Affaire inconnue"}`,
             type: "facturation",
             projectName: projectName,
+            projetId: b.projetId,
             ...TYPE_CONFIG.facturation
           });
         }
@@ -713,7 +717,9 @@ export default function CalendarView({ projects, billings, taches, clients, subc
               </h3>
               <div className="space-y-2">
                 {selectedEvents.map((ev, idx) => {
-                  const projLie = projects.find(p => `${p.nomAffaire} — ${p.nomZone}` === ev.projectName);
+                  const projLie = ev.projetId
+                    ? projects.find(p => p.id === ev.projetId)
+                    : projects.find(p => `${p.nomAffaire} — ${p.nomZone}` === ev.projectName);
                   const clientNom = clients.find(c => c.id === projLie?.clientId)?.nom;
                   const subNom = subcontractors.find(s => s.id === projLie?.sousTraitantId)?.nom;
                   const tache = ev.type === "tache" && ev.tacheId
