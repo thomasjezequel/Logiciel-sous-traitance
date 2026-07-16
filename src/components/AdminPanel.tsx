@@ -37,7 +37,27 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Custom confirmation state for user deletion to safety-bypass iframes
+  // ── Historique ──────────────────────────────────────────────────────────
+  const [auditLog, setAuditLog] = useState<any[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditCategorie, setAuditCategorie] = useState("");
+  const [auditActeur, setAuditActeur] = useState("");
+
+  const fetchAuditLog = async () => {
+    try {
+      setAuditLoading(true);
+      const params = new URLSearchParams();
+      if (auditCategorie) params.set("categorie", auditCategorie);
+      if (auditActeur) params.set("actorEmail", auditActeur);
+      const list = await api.request<any[]>(`/api/audit-log?${params.toString()}`);
+      setAuditLog(list);
+    } catch { setAuditLog([]); }
+    finally { setAuditLoading(false); }
+  };
+
+  const handleExportAudit = () => {
+    window.open("/api/audit-log/export", "_blank");
+  };
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<{
     isOpen: boolean;
     userId: string;
@@ -756,6 +776,102 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
               </span>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* ── Section Historique ── */}
+      <div className="mt-8 pt-8 border-t border-slate-100">
+        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-2 flex items-center gap-2">
+          📋 Historique des modifications
+        </h3>
+        <p className="text-xs text-slate-500 mb-4">
+          Journal des connexions et modifications sur les 15 derniers jours. Visible uniquement par les administrateurs.
+        </p>
+
+        {/* Filtres + boutons */}
+        <div className="flex flex-wrap gap-3 items-end mb-4">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase font-mono block mb-1">Catégorie</label>
+            <select value={auditCategorie} onChange={e => setAuditCategorie(e.target.value)}
+              className="text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white">
+              <option value="">Toutes</option>
+              <option value="connexion">Connexions</option>
+              <option value="affaire">Affaires</option>
+              <option value="budget">Budgets / Réalisés</option>
+              <option value="facturation">Facturation</option>
+              <option value="tache">Tâches</option>
+              <option value="utilisateur">Utilisateurs</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase font-mono block mb-1">Utilisateur</label>
+            <select value={auditActeur} onChange={e => setAuditActeur(e.target.value)}
+              className="text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white">
+              <option value="">Tous</option>
+              {[...new Set(auditLog.map((e: any) => e.actorEmail))].map(email => (
+                <option key={email} value={email}>{email}</option>
+              ))}
+            </select>
+          </div>
+          <button onClick={fetchAuditLog} disabled={auditLoading}
+            className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg px-4 py-2 transition">
+            {auditLoading ? "Chargement..." : "🔍 Afficher"}
+          </button>
+          <button onClick={handleExportAudit}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg px-4 py-2 transition flex items-center gap-1.5">
+            📥 Export Excel
+          </button>
+        </div>
+
+        {/* Tableau */}
+        {auditLog.length > 0 && (
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left text-xs whitespace-nowrap">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-gray-500 font-bold text-[10px] uppercase tracking-wider">
+                  <th className="px-3 py-2.5">Date / Heure</th>
+                  <th className="px-3 py-2.5">Utilisateur</th>
+                  <th className="px-3 py-2.5">Catégorie</th>
+                  <th className="px-3 py-2.5">Action</th>
+                  <th className="px-3 py-2.5">Détail</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {auditLog.map((entry: any) => {
+                  const cat = entry.categorie || "autre";
+                  const catColor: Record<string, string> = {
+                    connexion: "bg-blue-100 text-blue-800",
+                    affaire: "bg-teal-100 text-teal-800",
+                    budget: "bg-orange-100 text-orange-800",
+                    facturation: "bg-amber-100 text-amber-800",
+                    tache: "bg-indigo-100 text-indigo-800",
+                    utilisateur: "bg-red-100 text-red-800",
+                    autre: "bg-slate-100 text-slate-600"
+                  };
+                  const isEchec = entry.action?.toLowerCase().includes("échec");
+                  return (
+                    <tr key={entry.id} className={`transition ${isEchec ? "bg-red-50/40" : "hover:bg-slate-50/60"}`}>
+                      <td className="px-3 py-2 font-mono text-slate-500 text-[10px]">
+                        {new Date(entry.timestamp).toLocaleDateString("fr-FR")} {new Date(entry.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                      </td>
+                      <td className="px-3 py-2 font-semibold text-slate-800">{entry.actorNom}</td>
+                      <td className="px-3 py-2">
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${catColor[cat] || catColor.autre}`}>
+                          {cat}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 font-medium text-slate-700">{entry.action}</td>
+                      <td className="px-3 py-2 text-slate-500 max-w-xs truncate">{entry.details}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {auditLog.length === 0 && !auditLoading && (
+          <p className="text-xs text-slate-400 italic">Cliquez sur "Afficher" pour charger l'historique.</p>
         )}
       </div>
 

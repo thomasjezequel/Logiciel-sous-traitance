@@ -76,6 +76,8 @@ interface AuditLogEntry {
   actorNom: string;
   action: string;
   details: string;
+  categorie: "connexion" | "affaire" | "budget" | "facturation" | "tache" | "utilisateur" | "autre";
+  ip?: string;
 }
 
 interface Invitation {
@@ -704,22 +706,34 @@ function resetLoginAttempts(ip: string): void {
 // --- Journal d'audit des actions sensibles ---
 // Conserve une trace de qui a fait quoi (suppressions, changements de droits, mots de passe...).
 // Limité aux 1000 entrées les plus récentes pour éviter une croissance illimitée.
-const MAX_AUDIT_ENTRIES = 1000;
+const MAX_AUDIT_DAYS = 15; // Purge automatique au-delà de 15 jours
 
-function logAudit(actor: User, action: string, details: string) {
+function logAudit(
+  actor: User | { email: string; nom: string; id: string },
+  action: string,
+  details: string,
+  categorie: AuditLogEntry["categorie"] = "autre",
+  ip?: string
+) {
   try {
+    const now = new Date();
     const entry: AuditLogEntry = {
       id: "log_" + Math.random().toString(36).substring(2, 9),
-      timestamp: new Date().toISOString(),
+      timestamp: now.toISOString(),
       actorEmail: actor.email,
-      actorNom: actor.nom,
+      actorNom: (actor as any).nom || actor.email,
       action,
-      details
+      details,
+      categorie,
+      ip
     };
+
     db.auditLog.push(entry);
-    if (db.auditLog.length > MAX_AUDIT_ENTRIES) {
-      db.auditLog = db.auditLog.slice(db.auditLog.length - MAX_AUDIT_ENTRIES);
-    }
+
+    // Purge automatique : supprimer les entrées de plus de 15 jours
+    const cutoff = new Date(now.getTime() - MAX_AUDIT_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    db.auditLog = db.auditLog.filter(e => e.timestamp >= cutoff);
+
     saveDatabase();
     if (firestoreDb) {
       setDoc(doc(firestoreDb, "metadata", "auditLog"), { entries: db.auditLog }).catch((err: any) => {
@@ -808,20 +822,25 @@ app.post("/api/auth/login", async (req, res) => {
   const user = db.users.find(u => u.email.toLowerCase() === normalizedEmail);
 
   if (!user) {
+    // Log échec connexion (email inconnu)
+    logAudit(
+      { email: normalizedEmail, nom: "Inconnu", id: "unknown" },
+      "Échec de connexion",
+      `Email inconnu : ${normalizedEmail} — IP : ${clientIp}`,
+      "connexion", clientIp
+    );
     res.status(400).json({ error: "Identifiant ou mot de passe incorrect" });
     return;
   }
 
   try {
-    // Les mots de passe chiffrés (bcrypt) commencent toujours par "$2".
-    // Compatibilité : si un ancien mot de passe en clair est détecté, on le chiffre
-    // automatiquement dès cette connexion réussie (migration transparente, sans action requise).
     const isHashed = user.passwordHash.startsWith("$2");
     const passwordMatches = isHashed
       ? await bcrypt.compare(password, user.passwordHash)
       : password === user.passwordHash;
 
     if (!passwordMatches) {
+      logAudit(user, "Échec de connexion", `Mot de passe incorrect — IP : ${clientIp}`, "connexion", clientIp);
       res.status(400).json({ error: "Identifiant ou mot de passe incorrect" });
       return;
     }
@@ -849,6 +868,7 @@ app.post("/api/auth/login", async (req, res) => {
 
   const token = generateToken(user.id);
   resetLoginAttempts(clientIp);
+  logAudit(user, "Connexion réussie", `IP : ${clientIp}`, "connexion", clientIp);
   res.json({
     token,
     user: {
@@ -1242,6 +1262,8 @@ app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
   syncToFirestore("projects", newProject.id, newProject);
   syncToFirestore("budgets", newBudget.id, newBudget);
   syncToFirestore("realises", newRealise.id, newRealise);
+  const actorCreate = (req as any).user as User;
+  logAudit(actorCreate, "Création d'affaire", `${newProject.nomAffaire} — ${newProject.nomZone}`, "affaire");
   res.json(newProject);
 });
 
@@ -1307,6 +1329,8 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
   if (budget) {
     syncToFirestore("budgets", budget.id, budget);
   }
+  const actorPut = (req as any).user as User;
+  logAudit(actorPut, "Modification d'affaire", `${project.nomAffaire} — ${project.nomZone}`, "affaire");
   res.json(project);
 });
 
@@ -1409,6 +1433,8 @@ app.put("/api/budgets/:id", authenticate, requireWritePermission, (req, res) => 
 
   saveDatabase();
   syncToFirestore("budgets", budget.id, budget);
+  const budgetProj = db.projects.find(p => p.id === budget.projetId);
+  logAudit((req as any).user as User, "Modification budget", `${budgetProj?.nomAffaire || budget.projetId} — ${budgetProj?.nomZone || ""}`, "budget");
   res.json(budget);
 });
 
@@ -1470,6 +1496,8 @@ app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) =>
 
   saveDatabase();
   syncToFirestore("realises", realise.id, realise);
+  const realiseProj = db.projects.find(p => p.id === realise.projetId);
+  logAudit((req as any).user as User, "Modification réalisé", `${realiseProj?.nomAffaire || realise.projetId} — ${realiseProj?.nomZone || ""}`, "budget");
   res.json(realise);
 });
 
@@ -1547,6 +1575,8 @@ app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
   for (const p of updatedProjects) {
     syncToFirestore("projects", p.id, p);
   }
+  const billingProj = db.projects.find(p => p.id === newBilling.projetId);
+  logAudit((req as any).user as User, "Création facturation", `${billingProj?.nomAffaire || newBilling.projetId} — ${(newBilling.quantiteFacturee * newBilling.prixUnitaire).toLocaleString("fr-FR")} €`, "facturation");
   res.json(newBilling);
 });
 
@@ -1606,6 +1636,8 @@ app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) =>
   for (const p of updatedProjects) {
     syncToFirestore("projects", p.id, p);
   }
+  const billingProjPut = db.projects.find(p => p.id === billing.projetId);
+  logAudit(userBillingPut, "Modification facturation", `${billingProjPut?.nomAffaire || billing.projetId} — statut : ${billing.etatFacturation}`, "facturation");
   res.json(billing);
 });
 
@@ -1847,6 +1879,7 @@ app.post("/api/taches", authenticate, requireWritePermission, (req, res) => {
   (db as any).taches.push(newTache);
   saveDatabase();
   syncToFirestore("taches", newTache.id, newTache);
+  logAudit(user, "Création de tâche", `${libelle} — ${project?.nomAffaire || projetId} (${project?.nomZone || ""})`, "tache");
   res.json(newTache);
 });
 
@@ -1867,10 +1900,12 @@ app.put("/api/taches/:id", authenticate, requireWritePermission, (req, res) => {
   if (statut !== undefined) {
     tache.statut = statut;
     if (statut === "TERMINEE" && !tache.completedAt) tache.completedAt = new Date().toISOString();
-    if (statut !== "TERMINEE") tache.completedAt = undefined;
   }
   saveDatabase();
   syncToFirestore("taches", tache.id, tache);
+  const tacheProj = db.projects.find(p => p.id === tache.projetId);
+  const actionTache = statut === "TERMINEE" ? "Tâche marquée terminée" : "Modification de tâche";
+  logAudit(user, actionTache, `${tache.libelle} — ${tacheProj?.nomAffaire || tache.projetId}`, "tache");
   res.json(tache);
 });
 
@@ -1887,6 +1922,8 @@ app.post("/api/taches/:id/relance", authenticate, requireWritePermission, (req, 
   tache.relances.push(relance);
   saveDatabase();
   syncToFirestore("taches", tache.id, tache);
+  const relanceProj = db.projects.find(p => p.id === tache.projetId);
+  logAudit((req as any).user as User, "Relance de tâche", `${tache.libelle} — ${relanceProj?.nomAffaire || tache.projetId} (relance #${tache.relances.length})`, "tache");
   res.json(tache);
 });
 
@@ -2069,11 +2106,27 @@ app.get("/api/auth/check-invitation", (req, res) => {
 
 
 // --- AUDIT LOG API (Admin Only) ---
-// Consultation du journal des actions sensibles (suppressions, changements de droits, mots de passe...).
 app.get("/api/audit-log", authenticate, requireAdmin, (req, res) => {
-  // Retourne les entrées les plus récentes en premier
-  const sorted = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  res.json(sorted);
+  const { categorie, actorEmail } = req.query;
+  let entries = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  if (categorie) entries = entries.filter(e => e.categorie === categorie);
+  if (actorEmail) entries = entries.filter(e => e.actorEmail === actorEmail);
+  res.json(entries);
+});
+
+// Export CSV de l'historique (15 derniers jours)
+app.get("/api/audit-log/export", authenticate, requireAdmin, (req, res) => {
+  const entries = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const header = "Date/Heure;Utilisateur;Email;Catégorie;Action;Détail;IP\n";
+  const rows = entries.map(e => {
+    const date = new Date(e.timestamp).toLocaleString("fr-FR");
+    const cat = e.categorie || "autre";
+    const ip = e.ip || "";
+    return `"${date}";"${e.actorNom}";"${e.actorEmail}";"${cat}";"${e.action}";"${e.details}";"${ip}"`;
+  }).join("\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="flowfab-historique-${new Date().toISOString().slice(0,10)}.csv"`);
+  res.send("\uFEFF" + header + rows); // BOM UTF-8 pour Excel
 });
 
 

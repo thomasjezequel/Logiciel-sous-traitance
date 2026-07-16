@@ -559,21 +559,23 @@ function checkAndRegisterLoginAttempt(ip) {
 function resetLoginAttempts(ip) {
   loginAttempts.delete(ip);
 }
-var MAX_AUDIT_ENTRIES = 1e3;
-function logAudit(actor, action, details) {
+var MAX_AUDIT_DAYS = 15;
+function logAudit(actor, action, details, categorie = "autre", ip) {
   try {
+    const now = /* @__PURE__ */ new Date();
     const entry = {
       id: "log_" + Math.random().toString(36).substring(2, 9),
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      timestamp: now.toISOString(),
       actorEmail: actor.email,
-      actorNom: actor.nom,
+      actorNom: actor.nom || actor.email,
       action,
-      details
+      details,
+      categorie,
+      ip
     };
     db.auditLog.push(entry);
-    if (db.auditLog.length > MAX_AUDIT_ENTRIES) {
-      db.auditLog = db.auditLog.slice(db.auditLog.length - MAX_AUDIT_ENTRIES);
-    }
+    const cutoff = new Date(now.getTime() - MAX_AUDIT_DAYS * 24 * 60 * 60 * 1e3).toISOString();
+    db.auditLog = db.auditLog.filter((e) => e.timestamp >= cutoff);
     saveDatabase();
     if (firestoreDb) {
       (0, import_firestore.setDoc)((0, import_firestore.doc)(firestoreDb, "metadata", "auditLog"), { entries: db.auditLog }).catch((err) => {
@@ -643,6 +645,13 @@ app.post("/api/auth/login", async (req, res) => {
   const normalizedEmail = email.trim().toLowerCase();
   const user = db.users.find((u) => u.email.toLowerCase() === normalizedEmail);
   if (!user) {
+    logAudit(
+      { email: normalizedEmail, nom: "Inconnu", id: "unknown" },
+      "\xC9chec de connexion",
+      `Email inconnu : ${normalizedEmail} \u2014 IP : ${clientIp}`,
+      "connexion",
+      clientIp
+    );
     res.status(400).json({ error: "Identifiant ou mot de passe incorrect" });
     return;
   }
@@ -650,6 +659,7 @@ app.post("/api/auth/login", async (req, res) => {
     const isHashed = user.passwordHash.startsWith("$2");
     const passwordMatches = isHashed ? await import_bcryptjs.default.compare(password, user.passwordHash) : password === user.passwordHash;
     if (!passwordMatches) {
+      logAudit(user, "\xC9chec de connexion", `Mot de passe incorrect \u2014 IP : ${clientIp}`, "connexion", clientIp);
       res.status(400).json({ error: "Identifiant ou mot de passe incorrect" });
       return;
     }
@@ -673,6 +683,7 @@ app.post("/api/auth/login", async (req, res) => {
   }
   const token = generateToken(user.id);
   resetLoginAttempts(clientIp);
+  logAudit(user, "Connexion r\xE9ussie", `IP : ${clientIp}`, "connexion", clientIp);
   res.json({
     token,
     user: {
@@ -1005,6 +1016,8 @@ app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
   syncToFirestore("projects", newProject.id, newProject);
   syncToFirestore("budgets", newBudget.id, newBudget);
   syncToFirestore("realises", newRealise.id, newRealise);
+  const actorCreate = req.user;
+  logAudit(actorCreate, "Cr\xE9ation d'affaire", `${newProject.nomAffaire} \u2014 ${newProject.nomZone}`, "affaire");
   res.json(newProject);
 });
 app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) => {
@@ -1060,6 +1073,8 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
   if (budget) {
     syncToFirestore("budgets", budget.id, budget);
   }
+  const actorPut = req.user;
+  logAudit(actorPut, "Modification d'affaire", `${project.nomAffaire} \u2014 ${project.nomZone}`, "affaire");
   res.json(project);
 });
 app.delete("/api/projects/:id", authenticate, requireWritePermission, (req, res) => {
@@ -1148,6 +1163,8 @@ app.put("/api/budgets/:id", authenticate, requireWritePermission, (req, res) => 
   if (budgetHeuresMO !== void 0) budget.budgetHeuresMO = Number(budgetHeuresMO) || 0;
   saveDatabase();
   syncToFirestore("budgets", budget.id, budget);
+  const budgetProj = db.projects.find((p) => p.id === budget.projetId);
+  logAudit(req.user, "Modification budget", `${budgetProj?.nomAffaire || budget.projetId} \u2014 ${budgetProj?.nomZone || ""}`, "budget");
   res.json(budget);
 });
 app.get("/api/realises", authenticate, (req, res) => {
@@ -1202,6 +1219,8 @@ app.put("/api/realises/:id", authenticate, requireWritePermission, (req, res) =>
   if (poidsSousTraite !== void 0) realise.poidsSousTraite = Number(poidsSousTraite) || 0;
   saveDatabase();
   syncToFirestore("realises", realise.id, realise);
+  const realiseProj = db.projects.find((p) => p.id === realise.projetId);
+  logAudit(req.user, "Modification r\xE9alis\xE9", `${realiseProj?.nomAffaire || realise.projetId} \u2014 ${realiseProj?.nomZone || ""}`, "budget");
   res.json(realise);
 });
 app.get("/api/billings", authenticate, (req, res) => {
@@ -1268,6 +1287,8 @@ app.post("/api/billings", authenticate, requireWritePermission, (req, res) => {
   for (const p of updatedProjects) {
     syncToFirestore("projects", p.id, p);
   }
+  const billingProj = db.projects.find((p) => p.id === newBilling.projetId);
+  logAudit(req.user, "Cr\xE9ation facturation", `${billingProj?.nomAffaire || newBilling.projetId} \u2014 ${(newBilling.quantiteFacturee * newBilling.prixUnitaire).toLocaleString("fr-FR")} \u20AC`, "facturation");
   res.json(newBilling);
 });
 app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) => {
@@ -1322,6 +1343,8 @@ app.put("/api/billings/:id", authenticate, requireWritePermission, (req, res) =>
   for (const p of updatedProjects) {
     syncToFirestore("projects", p.id, p);
   }
+  const billingProjPut = db.projects.find((p) => p.id === billing.projetId);
+  logAudit(userBillingPut, "Modification facturation", `${billingProjPut?.nomAffaire || billing.projetId} \u2014 statut : ${billing.etatFacturation}`, "facturation");
   res.json(billing);
 });
 app.delete("/api/billings/:id", authenticate, requireWritePermission, (req, res) => {
@@ -1556,6 +1579,7 @@ app.post("/api/taches", authenticate, requireWritePermission, (req, res) => {
   db.taches.push(newTache);
   saveDatabase();
   syncToFirestore("taches", newTache.id, newTache);
+  logAudit(user, "Cr\xE9ation de t\xE2che", `${libelle} \u2014 ${project?.nomAffaire || projetId} (${project?.nomZone || ""})`, "tache");
   res.json(newTache);
 });
 app.put("/api/taches/:id", authenticate, requireWritePermission, (req, res) => {
@@ -1579,10 +1603,12 @@ app.put("/api/taches/:id", authenticate, requireWritePermission, (req, res) => {
   if (statut !== void 0) {
     tache.statut = statut;
     if (statut === "TERMINEE" && !tache.completedAt) tache.completedAt = (/* @__PURE__ */ new Date()).toISOString();
-    if (statut !== "TERMINEE") tache.completedAt = void 0;
   }
   saveDatabase();
   syncToFirestore("taches", tache.id, tache);
+  const tacheProj = db.projects.find((p) => p.id === tache.projetId);
+  const actionTache = statut === "TERMINEE" ? "T\xE2che marqu\xE9e termin\xE9e" : "Modification de t\xE2che";
+  logAudit(user, actionTache, `${tache.libelle} \u2014 ${tacheProj?.nomAffaire || tache.projetId}`, "tache");
   res.json(tache);
 });
 app.post("/api/taches/:id/relance", authenticate, requireWritePermission, (req, res) => {
@@ -1601,6 +1627,8 @@ app.post("/api/taches/:id/relance", authenticate, requireWritePermission, (req, 
   tache.relances.push(relance);
   saveDatabase();
   syncToFirestore("taches", tache.id, tache);
+  const relanceProj = db.projects.find((p) => p.id === tache.projetId);
+  logAudit(req.user, "Relance de t\xE2che", `${tache.libelle} \u2014 ${relanceProj?.nomAffaire || tache.projetId} (relance #${tache.relances.length})`, "tache");
   res.json(tache);
 });
 app.delete("/api/taches/:id", authenticate, requireWritePermission, (req, res) => {
@@ -1761,8 +1789,24 @@ app.get("/api/auth/check-invitation", (req, res) => {
   res.json({ valid: true, nom: invitation.nom, email: normalizedEmail, role: invitation.role });
 });
 app.get("/api/audit-log", authenticate, requireAdmin, (req, res) => {
-  const sorted = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  res.json(sorted);
+  const { categorie, actorEmail } = req.query;
+  let entries = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  if (categorie) entries = entries.filter((e) => e.categorie === categorie);
+  if (actorEmail) entries = entries.filter((e) => e.actorEmail === actorEmail);
+  res.json(entries);
+});
+app.get("/api/audit-log/export", authenticate, requireAdmin, (req, res) => {
+  const entries = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const header = "Date/Heure;Utilisateur;Email;Cat\xE9gorie;Action;D\xE9tail;IP\n";
+  const rows = entries.map((e) => {
+    const date = new Date(e.timestamp).toLocaleString("fr-FR");
+    const cat = e.categorie || "autre";
+    const ip = e.ip || "";
+    return `"${date}";"${e.actorNom}";"${e.actorEmail}";"${cat}";"${e.action}";"${e.details}";"${ip}"`;
+  }).join("\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="flowfab-historique-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.csv"`);
+  res.send("\uFEFF" + header + rows);
 });
 async function startListening() {
   await loadDatabaseFromFirestore();
