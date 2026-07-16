@@ -57,30 +57,12 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
 
 const handleExportAudit = async () => {
   try {
-    const token = api.getToken();
     const params = new URLSearchParams();
     if (auditCategorie) params.set("categorie", auditCategorie);
     if (auditActeur) params.set("actorEmail", auditActeur);
 
-    const response = await fetch(`/api/audit-log/export?${params.toString()}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error("L'export a échoué (statut " + response.status + ")");
-    }
-
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `flowfab-historique-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
+    const filename = `flowfab-historique-${new Date().toISOString().slice(0, 10)}.csv`;
+    await api.downloadFile(`/api/audit-log/export?${params.toString()}`, filename);
   } catch (err) {
     setError("Erreur lors de l'export de l'historique.");
   }

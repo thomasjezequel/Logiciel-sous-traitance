@@ -28,6 +28,50 @@ export const api = {
     return tokenCache;
   },
 
+  // Télécharge un fichier (CSV/Excel/PDF...) généré par le serveur, en conservant
+  // l'authentification (Bearer token) et la bonne adresse serveur (API_BASE).
+  // Utilise cette fonction pour tout futur bouton "Export" ou "Télécharger".
+  async downloadFile(endpoint: string, filename: string): Promise<void> {
+    const token = this.getToken();
+    const headers = new Headers();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+
+    const response = await fetch(API_BASE + endpoint, { headers });
+
+    if (!response.ok) {
+      let errorMessage = `Une erreur est survenue (Statut ${response.status})`;
+      try {
+        const errorData = await response.json();
+        if (errorData && errorData.error) {
+          errorMessage = errorData.error;
+        }
+      } catch {
+        // Pas de JSON dans la réponse, on garde le message générique
+      }
+
+      if (response.status === 401) {
+        this.setToken(null);
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const headers = new Headers(options.headers || {});
     
