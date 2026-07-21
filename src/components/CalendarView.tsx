@@ -382,7 +382,7 @@ export default function CalendarView({ projects, billings, taches, clients, subc
         if (p.camionsProtection && p.camionsProtection.length > 0) {
           p.camionsProtection.forEach((camion, idx) => {
             if (camion.date) {
-              events.push({ date: camion.date, label: `Camion ${idx + 1} — Protection`, type: "protection", projectName: name, ...TYPE_CONFIG.protection });
+              events.push({ date: camion.date, label: `Camion ${idx + 1}`, type: "protection", projectName: name, ...TYPE_CONFIG.protection });
             }
           });
         } else if (p.delaiLivraisonProtection) {
@@ -393,7 +393,7 @@ export default function CalendarView({ projects, billings, taches, clients, subc
         if (p.camionsChantier && p.camionsChantier.length > 0) {
           p.camionsChantier.forEach((camion, idx) => {
             if (camion.date) {
-              events.push({ date: camion.date, label: `Camion ${idx + 1} — Chantier`, type: "livraison", projectName: name, ...TYPE_CONFIG.livraison });
+              events.push({ date: camion.date, label: `Camion ${idx + 1}`, type: "livraison", projectName: name, ...TYPE_CONFIG.livraison });
             }
           });
         } else if (p.delaiLivraisonChantier) {
