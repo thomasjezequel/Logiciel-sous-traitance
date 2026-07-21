@@ -45,6 +45,16 @@ export enum ProjectStatus {
   TERMINEE = "Terminée"
 }
 
+// ─── CAMIONS DE LIVRAISON ─────────────────────────────────────────────────────
+// Représente un camion de livraison réel (site de protection ou chantier).
+// Dès qu'au moins un camion existe pour un site donné, la date estimative
+// (delaiLivraisonProtection / delaiLivraisonChantier) n'est plus affichée
+// dans le calendrier : elle est remplacée par la date réelle de chaque camion.
+export interface CamionLivraison {
+  id: string;
+  date: string; // YYYY-MM-DD
+}
+
 export interface Project {
   id: string;
   nomAffaire: string;
@@ -61,6 +71,8 @@ export interface Project {
   conducteurTravaux: string;
   delaiLivraisonProtection?: string; // YYYY-MM-DD
   delaiLivraisonChantier: string; // YYYY-MM-DD
+  camionsProtection?: CamionLivraison[]; // Camions réels vers le site de protection
+  camionsChantier?: CamionLivraison[];   // Camions réels vers le chantier
   dateAppro?: string; // YYYY-MM-DD — Date d'approvisionnement matière
   dateTracage?: string; // YYYY-MM-DD — Date de traçage/lancement en fabrication
   sousTraitantId: string; // Foreign key to Subcontractor

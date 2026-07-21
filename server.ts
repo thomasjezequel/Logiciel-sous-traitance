@@ -1224,6 +1224,8 @@ app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
     conducteurTravaux: data.conducteurTravaux || "", // Default empty / no longer pre-filled
     delaiLivraisonProtection: data.delaiLivraisonProtection || undefined,
     delaiLivraisonChantier: data.delaiLivraisonChantier || "",
+    camionsProtection: [],
+    camionsChantier: [],
     sousTraitantId: data.sousTraitantId,
     status: data.status || ProjectStatus.EN_COURS,
     typeOuvrage: data.typeOuvrage || "",
@@ -1311,6 +1313,8 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
   if (data.conducteurTravaux !== undefined) project.conducteurTravaux = data.conducteurTravaux;
   if (data.delaiLivraisonProtection !== undefined) project.delaiLivraisonProtection = data.delaiLivraisonProtection || undefined;
   if (data.delaiLivraisonChantier !== undefined) project.delaiLivraisonChantier = data.delaiLivraisonChantier;
+  if (data.camionsProtection !== undefined) project.camionsProtection = data.camionsProtection;
+  if (data.camionsChantier !== undefined) project.camionsChantier = data.camionsChantier;
   if (data.sousTraitantId !== undefined) project.sousTraitantId = data.sousTraitantId;
   if (data.status !== undefined) project.status = data.status;
   if (data.typeOuvrage !== undefined) project.typeOuvrage = data.typeOuvrage;
@@ -2116,10 +2120,7 @@ app.get("/api/audit-log", authenticate, requireAdmin, (req, res) => {
 
 // Export CSV de l'historique (15 derniers jours)
 app.get("/api/audit-log/export", authenticate, requireAdmin, (req, res) => {
-  const { categorie, actorEmail } = req.query;
-  let entries = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  if (categorie) entries = entries.filter(e => e.categorie === categorie);
-  if (actorEmail) entries = entries.filter(e => e.actorEmail === actorEmail);
+  const entries = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   const header = "Date/Heure;Utilisateur;Email;Catégorie;Action;Détail;IP\n";
   const rows = entries.map(e => {
     const date = new Date(e.timestamp).toLocaleString("fr-FR");

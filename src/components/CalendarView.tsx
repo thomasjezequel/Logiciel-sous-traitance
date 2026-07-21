@@ -378,11 +378,27 @@ export default function CalendarView({ projects, billings, taches, clients, subc
       if (showTracage && p.dateTracage) {
         events.push({ date: p.dateTracage, label: "Traçage", type: "tracage", projectName: name, ...TYPE_CONFIG.tracage });
       }
-      if (showProtection && p.delaiLivraisonProtection) {
-        events.push({ date: p.delaiLivraisonProtection, label: "Livr. Protection", type: "protection", projectName: name, ...TYPE_CONFIG.protection });
+      if (showProtection) {
+        if (p.camionsProtection && p.camionsProtection.length > 0) {
+          p.camionsProtection.forEach((camion, idx) => {
+            if (camion.date) {
+              events.push({ date: camion.date, label: `Camion ${idx + 1} — Protection`, type: "protection", projectName: name, ...TYPE_CONFIG.protection });
+            }
+          });
+        } else if (p.delaiLivraisonProtection) {
+          events.push({ date: p.delaiLivraisonProtection, label: "Livr. Protection", type: "protection", projectName: name, ...TYPE_CONFIG.protection });
+        }
       }
-      if (showLivraison && p.delaiLivraisonChantier) {
-        events.push({ date: p.delaiLivraisonChantier, label: "Livr. Chantier", type: "livraison", projectName: name, ...TYPE_CONFIG.livraison });
+      if (showLivraison) {
+        if (p.camionsChantier && p.camionsChantier.length > 0) {
+          p.camionsChantier.forEach((camion, idx) => {
+            if (camion.date) {
+              events.push({ date: camion.date, label: `Camion ${idx + 1} — Chantier`, type: "livraison", projectName: name, ...TYPE_CONFIG.livraison });
+            }
+          });
+        } else if (p.delaiLivraisonChantier) {
+          events.push({ date: p.delaiLivraisonChantier, label: "Livr. Chantier", type: "livraison", projectName: name, ...TYPE_CONFIG.livraison });
+        }
       }
     });
 

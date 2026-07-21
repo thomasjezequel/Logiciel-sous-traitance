@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Project, Client, Subcontractor, ProjectStatus } from "../types";
-import { X, Save, AlertTriangle } from "lucide-react";
+import { X, Save, AlertTriangle, Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 
 export const CHECKLIST_FIELDS = [
@@ -58,6 +58,8 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
     conducteurTravaux: "", // Empty by default now
     delaiLivraisonProtection: "",
     delaiLivraisonChantier: "",
+    camionsProtection: [],
+    camionsChantier: [],
     dateAppro: "",
     dateTracage: "",
     sousTraitantId: "",
@@ -92,6 +94,8 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
         dateCommande: project.dateCommande || "",
         delaiLivraisonProtection: project.delaiLivraisonProtection || "",
         delaiLivraisonChantier: project.delaiLivraisonChantier || "",
+        camionsProtection: project.camionsProtection || [],
+        camionsChantier: project.camionsChantier || [],
         dateAppro: project.dateAppro || "",
         dateTracage: project.dateTracage || "",
         status: project.status || ProjectStatus.EN_COURS,
@@ -118,6 +122,8 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
         conducteurTravaux: "", // Empty for creation as requested
         delaiLivraisonProtection: "",
         delaiLivraisonChantier: "",
+        camionsProtection: [],
+        camionsChantier: [],
         dateAppro: "",
         dateTracage: "",
         sousTraitantId: subcontractors.length > 0 ? subcontractors[0].id : "",
@@ -177,6 +183,33 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
     });
   };
 
+  // Gestion des camions de livraison réels (protection et chantier)
+  // Dès qu'un camion existe pour un site, sa date estimative n'est plus utilisée
+  // dans le calendrier — remplacée par les dates réelles "Camion 1", "Camion 2"...
+  const addCamion = (site: "camionsProtection" | "camionsChantier") => {
+    setFormData(prev => ({
+      ...prev,
+      [site]: [
+        ...(prev[site] || []),
+        { id: "cam_" + Math.random().toString(36).substring(2, 9), date: "" }
+      ]
+    }));
+  };
+
+  const removeCamion = (site: "camionsProtection" | "camionsChantier", camionId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [site]: (prev[site] || []).filter(c => c.id !== camionId)
+    }));
+  };
+
+  const updateCamionDate = (site: "camionsProtection" | "camionsChantier", camionId: string, date: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [site]: (prev[site] || []).map(c => c.id === camionId ? { ...c, date } : c)
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.nomAffaire || !formData.nomZone) {
@@ -193,6 +226,14 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
     }
     if (!formData.delaiLivraisonChantier) {
       setError("Veuillez spécifier le délai de livraison au chantier.");
+      return;
+    }
+    if ((formData.camionsProtection || []).some(c => !c.date)) {
+      setError("Veuillez renseigner une date pour chaque camion (site de protection), ou le retirer.");
+      return;
+    }
+    if ((formData.camionsChantier || []).some(c => !c.date)) {
+      setError("Veuillez renseigner une date pour chaque camion (chantier), ou le retirer.");
       return;
     }
 
@@ -483,6 +524,41 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
                   onChange={handleChange}
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
                 />
+                {(formData.camionsProtection || []).length > 0 && (
+                  <p className="text-[10px] text-amber-700 mt-1 italic">
+                    Cette date estimative ne s'affichera plus dans le calendrier tant qu'au moins un camion est renseigné ci-dessous.
+                  </p>
+                )}
+                <div className="mt-2 space-y-2">
+                  {(formData.camionsProtection || []).map((camion, idx) => (
+                    <div key={camion.id} className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-orange-700 bg-orange-100 rounded px-1.5 py-0.5 shrink-0 w-16 text-center">
+                        Camion {idx + 1}
+                      </span>
+                      <input
+                        type="date"
+                        value={camion.date}
+                        onChange={e => updateCamionDate("camionsProtection", camion.id, e.target.value)}
+                        className="flex-1 text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-800 focus:outline-teal-500 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeCamion("camionsProtection", camion.id)}
+                        className="text-gray-400 hover:text-red-600 p-1 rounded transition shrink-0"
+                        title="Retirer ce camion"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => addCamion("camionsProtection")}
+                    className="flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800 transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Ajouter un camion (protection)
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-500 block mb-1">Livraison sur Chantier *</label>
@@ -494,6 +570,41 @@ export default function ProjectModal({ isOpen, onClose, project, clients, subcon
                   required
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-teal-500 bg-white"
                 />
+                {(formData.camionsChantier || []).length > 0 && (
+                  <p className="text-[10px] text-amber-700 mt-1 italic">
+                    Cette date estimative ne s'affichera plus dans le calendrier tant qu'au moins un camion est renseigné ci-dessous.
+                  </p>
+                )}
+                <div className="mt-2 space-y-2">
+                  {(formData.camionsChantier || []).map((camion, idx) => (
+                    <div key={camion.id} className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-teal-700 bg-teal-100 rounded px-1.5 py-0.5 shrink-0 w-16 text-center">
+                        Camion {idx + 1}
+                      </span>
+                      <input
+                        type="date"
+                        value={camion.date}
+                        onChange={e => updateCamionDate("camionsChantier", camion.id, e.target.value)}
+                        className="flex-1 text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-800 focus:outline-teal-500 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeCamion("camionsChantier", camion.id)}
+                        className="text-gray-400 hover:text-red-600 p-1 rounded transition shrink-0"
+                        title="Retirer ce camion"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => addCamion("camionsChantier")}
+                    className="flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800 transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Ajouter un camion (chantier)
+                  </button>
+                </div>
               </div>
             </div>
           </div>

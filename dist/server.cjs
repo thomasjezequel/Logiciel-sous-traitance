@@ -983,6 +983,8 @@ app.post("/api/projects", authenticate, requireWritePermission, (req, res) => {
     // Default empty / no longer pre-filled
     delaiLivraisonProtection: data.delaiLivraisonProtection || void 0,
     delaiLivraisonChantier: data.delaiLivraisonChantier || "",
+    camionsProtection: [],
+    camionsChantier: [],
     sousTraitantId: data.sousTraitantId,
     status: data.status || "En cours" /* EN_COURS */,
     typeOuvrage: data.typeOuvrage || "",
@@ -1058,6 +1060,8 @@ app.put("/api/projects/:id", authenticate, requireWritePermission, (req, res) =>
   if (data.conducteurTravaux !== void 0) project.conducteurTravaux = data.conducteurTravaux;
   if (data.delaiLivraisonProtection !== void 0) project.delaiLivraisonProtection = data.delaiLivraisonProtection || void 0;
   if (data.delaiLivraisonChantier !== void 0) project.delaiLivraisonChantier = data.delaiLivraisonChantier;
+  if (data.camionsProtection !== void 0) project.camionsProtection = data.camionsProtection;
+  if (data.camionsChantier !== void 0) project.camionsChantier = data.camionsChantier;
   if (data.sousTraitantId !== void 0) project.sousTraitantId = data.sousTraitantId;
   if (data.status !== void 0) project.status = data.status;
   if (data.typeOuvrage !== void 0) project.typeOuvrage = data.typeOuvrage;
@@ -1796,10 +1800,7 @@ app.get("/api/audit-log", authenticate, requireAdmin, (req, res) => {
   res.json(entries);
 });
 app.get("/api/audit-log/export", authenticate, requireAdmin, (req, res) => {
-  const { categorie, actorEmail } = req.query;
-  let entries = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  if (categorie) entries = entries.filter((e) => e.categorie === categorie);
-  if (actorEmail) entries = entries.filter((e) => e.actorEmail === actorEmail);
+  const entries = [...db.auditLog].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   const header = "Date/Heure;Utilisateur;Email;Cat\xE9gorie;Action;D\xE9tail;IP\n";
   const rows = entries.map((e) => {
     const date = new Date(e.timestamp).toLocaleString("fr-FR");
