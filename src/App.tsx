@@ -2489,6 +2489,7 @@ export default function App() {
                 taches={taches}
                 tachesType={tachesType}
                 projects={permittedProjects}
+                billings={permittedBillings}
                 interlocuteurs={interlocuteurs}
                 clients={clients}
                 subcontractors={subcontractors}

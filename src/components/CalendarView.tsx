@@ -42,7 +42,7 @@ export default function CalendarView({ projects, billings, taches, clients, subc
 
   // ── Modal impression ──────────────────────────────────────────────────────
   const [showPrintModal, setShowPrintModal] = useState(false);
-  const [printPeriod, setPrintPeriod] = useState<"month" | "week" | "custom">("month");
+  const [printPeriod, setPrintPeriod] = useState<"month" | "week" | "rolling" | "custom">("month");
   const [printDateDebut, setPrintDateDebut] = useState("");
   const [printDateFin, setPrintDateFin] = useState("");
   const [printAppro, setPrintAppro] = useState(true);
@@ -73,6 +73,20 @@ export default function CalendarView({ projects, billings, taches, clients, subc
         debut: mon.toISOString().slice(0, 10),
         fin: sun.toISOString().slice(0, 10),
         label: `Semaine du ${mon.toLocaleDateString("fr-FR")} au ${sun.toLocaleDateString("fr-FR")}`
+      };
+    }
+    if (printPeriod === "rolling") {
+      // Premier jour (lundi) de la semaine en cours, jusqu'à un mois plus tard (veille de la même date le mois suivant)
+      const d = new Date();
+      const dow = (d.getDay() + 6) % 7;
+      const mon = new Date(d); mon.setDate(d.getDate() - dow);
+      const finRolling = new Date(mon);
+      finRolling.setMonth(finRolling.getMonth() + 1);
+      finRolling.setDate(finRolling.getDate() - 1);
+      return {
+        debut: mon.toISOString().slice(0, 10),
+        fin: finRolling.toISOString().slice(0, 10),
+        label: `Du ${mon.toLocaleDateString("fr-FR")} au ${finRolling.toLocaleDateString("fr-FR")}`
       };
     }
     return {
@@ -285,7 +299,11 @@ export default function CalendarView({ projects, billings, taches, clients, subc
           </div>
         </div>`;
     } else {
-      const titreList = printPeriod === "week" ? "📋 Détail — Semaine en cours" : "📋 Détail chronologique";
+      const titreList = printPeriod === "week"
+        ? "📋 Détail — Semaine en cours"
+        : printPeriod === "rolling"
+        ? "📋 Détail — Semaine en cours + 1 mois"
+        : "📋 Détail chronologique";
       contenuHtml = `
         <div>
           ${header(titreList)}
@@ -373,31 +391,31 @@ export default function CalendarView({ projects, billings, taches, clients, subc
     filteredProjects.forEach(p => {
       const name = `${p.nomAffaire} — ${p.nomZone}`;
       if (showAppro && p.dateAppro) {
-        events.push({ date: p.dateAppro, label: "Appro", type: "appro", projectName: name, ...TYPE_CONFIG.appro });
+        events.push({ date: p.dateAppro, type: "appro", projectName: name, ...TYPE_CONFIG.appro, label: "Appro" });
       }
       if (showTracage && p.dateTracage) {
-        events.push({ date: p.dateTracage, label: "Traçage", type: "tracage", projectName: name, ...TYPE_CONFIG.tracage });
+        events.push({ date: p.dateTracage, type: "tracage", projectName: name, ...TYPE_CONFIG.tracage, label: "Traçage" });
       }
       if (showProtection) {
         if (p.camionsProtection && p.camionsProtection.length > 0) {
           p.camionsProtection.forEach((camion, idx) => {
             if (camion.date) {
-              events.push({ date: camion.date, label: `Camion ${idx + 1}`, type: "protection", projectName: name, ...TYPE_CONFIG.protection });
+              events.push({ date: camion.date, type: "protection", projectName: name, ...TYPE_CONFIG.protection, label: `Livr. Protection - Camion ${idx + 1}` });
             }
           });
         } else if (p.delaiLivraisonProtection) {
-          events.push({ date: p.delaiLivraisonProtection, label: "Livr. Protection", type: "protection", projectName: name, ...TYPE_CONFIG.protection });
+          events.push({ date: p.delaiLivraisonProtection, type: "protection", projectName: name, ...TYPE_CONFIG.protection, label: "Livr. Protection" });
         }
       }
       if (showLivraison) {
         if (p.camionsChantier && p.camionsChantier.length > 0) {
           p.camionsChantier.forEach((camion, idx) => {
             if (camion.date) {
-              events.push({ date: camion.date, label: `Camion ${idx + 1}`, type: "livraison", projectName: name, ...TYPE_CONFIG.livraison });
+              events.push({ date: camion.date, type: "livraison", projectName: name, ...TYPE_CONFIG.livraison, label: `Livr. Chantier - Camion ${idx + 1}` });
             }
           });
         } else if (p.delaiLivraisonChantier) {
-          events.push({ date: p.delaiLivraisonChantier, label: "Livr. Chantier", type: "livraison", projectName: name, ...TYPE_CONFIG.livraison });
+          events.push({ date: p.delaiLivraisonChantier, type: "livraison", projectName: name, ...TYPE_CONFIG.livraison, label: "Livr. Chantier" });
         }
       }
     });
@@ -436,11 +454,11 @@ export default function CalendarView({ projects, billings, taches, clients, subc
           const montant = (b.quantiteFacturee * b.prixUnitaire).toLocaleString("fr-FR");
           events.push({
             date: b.dateEcheance,
-            label: `Facture ${montant} € — ${proj?.nomAffaire || "Affaire inconnue"}`,
             type: "facturation",
             projectName: projectName,
             projetId: b.projetId,
-            ...TYPE_CONFIG.facturation
+            ...TYPE_CONFIG.facturation,
+            label: `Facture ${montant} € — ${proj?.nomAffaire || "Affaire inconnue"}`
           });
         }
       });
@@ -542,10 +560,15 @@ export default function CalendarView({ projects, billings, taches, clients, subc
               {/* Étape 1 — Période */}
               <div>
                 <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono mb-2">Étape 1 — Période</h3>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {[
                     { val: "month", label: "Mois en cours", sub: new Date(currentYear, currentMonth, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" }) },
                     { val: "week", label: "Semaine en cours", sub: `S${getWeekNumber(today.getFullYear(), today.getMonth(), today.getDate())}` },
+                    { val: "rolling", label: "Semaine en cours + 1 mois", sub: (() => {
+                        const dow = (today.getDay() + 6) % 7;
+                        const mon = new Date(today); mon.setDate(today.getDate() - dow);
+                        return `À partir du ${mon.toLocaleDateString("fr-FR")}`;
+                      })() },
                     { val: "custom", label: "Dates personnalisées", sub: "Choisir les dates" }
                   ].map(opt => (
                     <button key={opt.val} onClick={() => setPrintPeriod(opt.val as any)}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Project, Client, Subcontractor, Interlocuteur, Tache, TacheType } from "../types";
+import { Project, Client, Subcontractor, Interlocuteur, Tache, TacheType, Billing, BillingStatus } from "../types";
 import {
   Plus, Trash2, Mail, Edit,
   RotateCcw, ChevronDown, ChevronUp, Eye, EyeOff, AlertTriangle, Clock, ListTodo
@@ -9,6 +9,7 @@ interface TasksViewProps {
   taches: Tache[];
   tachesType: TacheType[];
   projects: Project[];
+  billings: Billing[];
   interlocuteurs: Interlocuteur[];
   clients: Client[];
   subcontractors: Subcontractor[];
@@ -23,6 +24,7 @@ export default function TasksView({
   taches,
   tachesType,
   projects,
+  billings,
   interlocuteurs,
   clients,
   subcontractors,
@@ -39,20 +41,6 @@ export default function TasksView({
   const [expandedRelances, setExpandedRelances] = useState<Set<string>>(new Set());
   const [relanceNoteId, setRelanceNoteId] = useState<string | null>(null);
   const [relanceNote, setRelanceNote] = useState("");
-
-  // Tri du tableau : colonne active + sens (asc/desc)
-  // Par défaut : Échéance, du plus urgent au moins urgent (dates croissantes)
-  const [sortColumn, setSortColumn] = useState<"statut" | "affaire" | "tache" | "interlocuteur" | "echeance" | "relances">("echeance");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-
-  const handleSort = (column: typeof sortColumn) => {
-    if (sortColumn === column) {
-      setSortDirection(d => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortColumn(column);
-      setSortDirection("asc");
-    }
-  };
 
   // Édition inline d'une tâche existante
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -99,6 +87,17 @@ export default function TasksView({
   };
 
   // Interlocuteurs filtrés selon le projet sélectionné dans le formulaire
+  // Une affaire est considérée "archivée" dès qu'elle a été facturée (Envoyée ou Payée) —
+  // même logique que dans App.tsx. On l'utilise pour ne proposer, à la création d'une
+  // nouvelle tâche, que les affaires encore en cours (non facturées).
+  const isProjectArchived = (projectId: string) => {
+    return billings.some(b =>
+      (b.projetId === projectId || b.projetIds?.includes(projectId)) &&
+      (b.etatFacturation === BillingStatus.ENVOYEE || b.etatFacturation === BillingStatus.PAYEE)
+    );
+  };
+  const nonArchivedProjects = projects.filter(p => !isProjectArchived(p.id));
+
   const getInterlocuteursForProject = (projetId: string) => {
     const proj = projects.find(p => p.id === projetId);
     if (!proj) return interlocuteurs;
@@ -125,62 +124,16 @@ export default function TasksView({
     return true;
   });
 
-  // Ordre de priorité utilisé pour trier la colonne "Statut" de façon logique
-  // (plutôt qu'un tri alphabétique brut qui n'aurait pas de sens métier)
-  const statutOrder: Record<string, number> = { A_FAIRE: 0, EN_COURS: 1, TERMINEE: 2 };
-
+  // Tri : en retard en premier, puis par date d'échéance
   const sortedTaches = [...filteredTaches].sort((a, b) => {
-    let comparison = 0;
-
-    switch (sortColumn) {
-      case "statut":
-        comparison = (statutOrder[a.statut] ?? 99) - (statutOrder[b.statut] ?? 99);
-        break;
-      case "affaire": {
-        const nomA = projects.find(p => p.id === a.projetId)?.nomAffaire || "";
-        const nomB = projects.find(p => p.id === b.projetId)?.nomAffaire || "";
-        comparison = nomA.localeCompare(nomB, "fr");
-        break;
-      }
-      case "tache":
-        comparison = a.libelle.localeCompare(b.libelle, "fr");
-        break;
-      case "interlocuteur": {
-        const interA = interlocuteurs.find(i => i.id === a.interlocuteurId);
-        const interB = interlocuteurs.find(i => i.id === b.interlocuteurId);
-        const nomA = interA ? `${interA.nom} ${interA.prenom}` : "";
-        const nomB = interB ? `${interB.nom} ${interB.prenom}` : "";
-        comparison = nomA.localeCompare(nomB, "fr");
-        break;
-      }
-      case "relances":
-        comparison = (a.relances?.length || 0) - (b.relances?.length || 0);
-        break;
-      case "echeance":
-      default:
-        comparison = new Date(a.dateEcheance).getTime() - new Date(b.dateEcheance).getTime();
-        break;
-    }
-
-    return sortDirection === "asc" ? comparison : -comparison;
+    const aOver = isOverdue(a);
+    const bOver = isOverdue(b);
+    if (aOver && !bOver) return -1;
+    if (!aOver && bOver) return 1;
+    if (a.statut === "TERMINEE" && b.statut !== "TERMINEE") return 1;
+    if (a.statut !== "TERMINEE" && b.statut === "TERMINEE") return -1;
+    return new Date(a.dateEcheance).getTime() - new Date(b.dateEcheance).getTime();
   });
-
-  // Petit composant interne pour l'en-tête de colonne cliquable, avec indicateur de tri
-  const SortableHeader = ({ column, label, align }: { column: typeof sortColumn; label: string; align?: "right" }) => (
-    <th
-      onClick={() => handleSort(column)}
-      className={`px-4 py-3 cursor-pointer select-none hover:text-slate-700 transition ${align === "right" ? "text-right" : ""}`}
-    >
-      <span className={`inline-flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
-        {label}
-        {sortColumn === column ? (
-          sortDirection === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-        ) : (
-          <ChevronDown className="w-3 h-3 opacity-20" />
-        )}
-      </span>
-    </th>
-  );
 
   const activeTachesCount = taches.filter(t => t.statut !== "TERMINEE").length;
   const urgentCount = taches.filter(t => isOverdue(t)).length;
@@ -388,7 +341,7 @@ export default function TasksView({
                 onChange={e => setForm(prev => ({ ...prev, projetId: e.target.value, interlocuteurId: "" }))}
                 className="w-full text-sm border border-indigo-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-indigo-500 bg-white">
                 <option value="">-- Sélectionner une affaire --</option>
-                {[...projects].sort((a,b) => a.nomAffaire.localeCompare(b.nomAffaire, "fr")).map(p => (
+                {[...nonArchivedProjects].sort((a,b) => a.nomAffaire.localeCompare(b.nomAffaire, "fr")).map(p => (
                   <option key={p.id} value={p.id}>{p.nomAffaire} — {p.nomZone}</option>
                 ))}
               </select>
@@ -466,12 +419,12 @@ export default function TasksView({
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-gray-500 font-bold text-[11px] uppercase tracking-wider">
-                <SortableHeader column="statut" label="Statut" />
-                <SortableHeader column="affaire" label="Affaire / Zone" />
-                <SortableHeader column="tache" label="Tâche" />
-                <SortableHeader column="interlocuteur" label="Interlocuteur" />
-                <SortableHeader column="echeance" label="Échéance" />
-                <SortableHeader column="relances" label="Relances" />
+                <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3">Affaire / Zone</th>
+                <th className="px-4 py-3">Tâche</th>
+                <th className="px-4 py-3">Interlocuteur</th>
+                <th className="px-4 py-3">Échéance</th>
+                <th className="px-4 py-3">Relances</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
