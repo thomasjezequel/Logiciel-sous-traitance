@@ -188,7 +188,9 @@ export default function App() {
   const [isPrintBillingModalOpen, setIsPrintBillingModalOpen] = useState(false);
   const [selectedBillingForPrint, setSelectedBillingForPrint] = useState<Billing | null>(null);
   const [isPrintFinanceModalOpen, setIsPrintFinanceModalOpen] = useState(false);
-  const [selectedProjectForFinancePrint, setSelectedProjectForFinancePrint] = useState<Project | null>(null);
+  const [selectedProjectsForFinancePrint, setSelectedProjectsForFinancePrint] = useState<Project[]>([]);
+  // Sélection de zones (cases à cocher, Bloc 1 & 2) en vue d'une impression de fiche groupée
+  const [selectedZoneIdsForGroupPrint, setSelectedZoneIdsForGroupPrint] = useState<Set<string>>(new Set());
 
   // Custom confirmation modal state to bypass iframe window.confirm restriction
   const [confirmModal, setConfirmModal] = useState<{
@@ -540,6 +542,21 @@ export default function App() {
     });
   };
 
+  // Une société autorisée en tant que Client peut aussi être enregistrée comme Sous-traitant
+  // sur d'autres affaires (même entreprise, mais présente séparément dans les deux annuaires).
+  // On la retrouve alors par correspondance de nom (insensible à la casse et aux espaces).
+  const getAllowedSubcontractorIdsByClientMatch = (): string[] => {
+    if (!user) return [];
+    const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+    if (!hasClientLimit) return [];
+    const allowedClientNames = user.allowedClientIds!
+      .map(id => clients.find(c => c.id === id)?.nom?.trim().toLowerCase())
+      .filter((n): n is string => !!n);
+    return subcontractors
+      .filter(s => allowedClientNames.includes(s.nom.trim().toLowerCase()))
+      .map(s => s.id);
+  };
+
   // Get only permitted arrays for non-admin users
   const permittedProjects = projects.filter(p => {
     if (!user || user.role === UserRole.ADMIN) return true;
@@ -548,7 +565,8 @@ export default function App() {
     if (hasProjectLimit || hasClientLimit) {
       const isProjectAllowed = hasProjectLimit && user.allowedProjectIds?.includes(p.id);
       const isClientAllowed = hasClientLimit && user.allowedClientIds?.includes(p.clientId);
-      return !!(isProjectAllowed || isClientAllowed);
+      const isSubcontractorAllowed = hasClientLimit && getAllowedSubcontractorIdsByClientMatch().includes(p.sousTraitantId);
+      return !!(isProjectAllowed || isClientAllowed || isSubcontractorAllowed);
     }
     return true;
   });
@@ -562,7 +580,8 @@ export default function App() {
     if (hasProjectLimit || hasClientLimit) {
       const isProjectAllowed = hasProjectLimit && (user.allowedProjectIds?.includes(b.projetId) || b.projetIds?.some(id => user.allowedProjectIds?.includes(id)));
       const isClientAllowed = hasClientLimit && user.allowedClientIds?.includes(proj.clientId);
-      return !!(isProjectAllowed || isClientAllowed);
+      const isSubcontractorAllowed = hasClientLimit && getAllowedSubcontractorIdsByClientMatch().includes(proj.sousTraitantId);
+      return !!(isProjectAllowed || isClientAllowed || isSubcontractorAllowed);
     }
     return true;
   });
@@ -1030,7 +1049,7 @@ export default function App() {
 
 
 
-          <p className="text-xs text-slate-500 mt-8 font-mono">FlowFab v3.1.4 • Pilotage de Fabrication</p>
+          <p className="text-xs text-slate-500 mt-8 font-mono">FlowFab v3.2.0 • Pilotage de Fabrication</p>
         </div>
 
         {/* Right Form Input Section */}
@@ -1553,7 +1572,7 @@ export default function App() {
                 isWritable={isWritable}
                 onOpenPrestation={(p) => setPrintableProject(p)}
                 onOpenBudgetRealise={(p) => {
-                  setSelectedProjectForFinancePrint(p);
+                  setSelectedProjectsForFinancePrint([p]);
                   setIsPrintFinanceModalOpen(true);
                 }}
                 onOpenBillingPrint={(b) => {
@@ -1741,8 +1760,65 @@ export default function App() {
             )}
 
             {/* 3. Budgets & Realises blended tab */}
-            {activeTab === "budgets_realises" && (
+            {/* ── Onglet Budgets-Réalisés ── */}
+            {activeTab === "budgets_realises" && (() => {
+              const toggleZoneSelection = (projectId: string) => {
+                setSelectedZoneIdsForGroupPrint(prev => {
+                  const next = new Set(prev);
+                  if (next.has(projectId)) next.delete(projectId);
+                  else next.add(projectId);
+                  return next;
+                });
+              };
+              const selectedZoneProjects = permittedProjects.filter(p => selectedZoneIdsForGroupPrint.has(p.id));
+              const ref = selectedZoneProjects[0];
+              const groupMismatch = selectedZoneProjects.length >= 2 && !selectedZoneProjects.every(p =>
+                p.numCommande === ref.numCommande && p.clientId === ref.clientId && p.sousTraitantId === ref.sousTraitantId
+              );
+              const canPrintGroup = selectedZoneProjects.length >= 2 && !groupMismatch;
+
+              return (
               <div className="space-y-6">
+
+                {/* Barre de sélection pour l'impression groupée de fiches de décision */}
+                {selectedZoneIdsForGroupPrint.size > 0 && (
+                  <div className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${canPrintGroup ? "bg-indigo-50 border-indigo-200" : groupMismatch ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-200"}`}>
+                    <div className="text-xs">
+                      <span className={`font-bold block ${canPrintGroup ? "text-indigo-900" : groupMismatch ? "text-red-800" : "text-slate-600"}`}>
+                        {selectedZoneIdsForGroupPrint.size} zone{selectedZoneIdsForGroupPrint.size > 1 ? "s" : ""} sélectionnée{selectedZoneIdsForGroupPrint.size > 1 ? "s" : ""}
+                      </span>
+                      {groupMismatch && (
+                        <span className="text-red-700">
+                          Impossible de regrouper : le N° de commande, le client et le sous-traitant doivent être identiques sur toutes les zones sélectionnées.
+                        </span>
+                      )}
+                      {!groupMismatch && selectedZoneIdsForGroupPrint.size === 1 && (
+                        <span className="text-slate-500">Sélectionnez au moins une 2ᵉ zone (même N° commande/client/sous-traitant) pour imprimer une fiche groupée.</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => setSelectedZoneIdsForGroupPrint(new Set())}
+                        className="text-xs bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 font-semibold px-3 py-1.5 rounded-lg transition"
+                      >
+                        Réinitialiser
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!canPrintGroup) return;
+                          setSelectedProjectsForFinancePrint(selectedZoneProjects);
+                          setIsPrintFinanceModalOpen(true);
+                        }}
+                        disabled={!canPrintGroup}
+                        className="text-xs bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        Imprimer la fiche groupée
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 
                 {/* Micro KPIs for whole filtered dashboard sheet */}
                 {(() => {
@@ -1885,14 +1961,25 @@ export default function App() {
                           return (
                             <tr key={p.id} className="hover:bg-slate-50/65 transition">
                               <td className="px-4 py-3 col-span-1">
-                                <span className="font-semibold text-slate-950 block">{p.nomAffaire}</span>
-                                <span className="text-[10px] text-gray-400 font-mono block">{p.nomZone}</span>
+                                <div className="flex items-start gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedZoneIdsForGroupPrint.has(p.id)}
+                                    onChange={() => toggleZoneSelection(p.id)}
+                                    className="mt-1 cursor-pointer accent-indigo-600"
+                                    title="Sélectionner cette zone pour une fiche groupée"
+                                  />
+                                  <div>
+                                    <span className="font-semibold text-slate-950 block">{p.nomAffaire}</span>
+                                    <span className="text-[10px] text-gray-400 font-mono block">{p.nomZone}</span>
+                                  </div>
+                                </div>
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex items-center justify-center gap-2">
                                   <button
                                     onClick={() => {
-                                      setSelectedProjectForFinancePrint(p);
+                                      setSelectedProjectsForFinancePrint([p]);
                                       setIsPrintFinanceModalOpen(true);
                                     }}
                                     className="text-xs bg-amber-50 hover:bg-amber-100 border border-amber-250 text-amber-800 font-bold px-2 py-1 rounded flex items-center gap-1 transition cursor-pointer select-none"
@@ -2018,14 +2105,25 @@ export default function App() {
                           return (
                             <tr key={p.id} className="hover:bg-slate-50/65 transition">
                               <td className="px-4 py-3">
-                                <span className="font-semibold text-slate-950 block">{p.nomAffaire}</span>
-                                <span className="text-[10px] text-gray-400 font-mono block">{p.nomZone}</span>
+                                <div className="flex items-start gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedZoneIdsForGroupPrint.has(p.id)}
+                                    onChange={() => toggleZoneSelection(p.id)}
+                                    className="mt-1 cursor-pointer accent-indigo-600"
+                                    title="Sélectionner cette zone pour une fiche groupée"
+                                  />
+                                  <div>
+                                    <span className="font-semibold text-slate-950 block">{p.nomAffaire}</span>
+                                    <span className="text-[10px] text-gray-400 font-mono block">{p.nomZone}</span>
+                                  </div>
+                                </div>
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex items-center justify-center gap-2">
                                   <button
                                     onClick={() => {
-                                      setSelectedProjectForFinancePrint(p);
+                                      setSelectedProjectsForFinancePrint([p]);
                                       setIsPrintFinanceModalOpen(true);
                                     }}
                                     className="text-xs bg-amber-50 hover:bg-amber-100 border border-amber-250 text-amber-800 font-bold px-2 py-1 rounded flex items-center gap-1 transition cursor-pointer select-none"
@@ -2076,7 +2174,8 @@ export default function App() {
                 </div>
 
               </div>
-            )}
+              );
+            })()}
 
             {/* 5. Billings tab */}
             {activeTab === "billings" && (
@@ -2602,16 +2701,20 @@ export default function App() {
         />
       )}
 
-      {/* 5b. Budget & Realised Side-by-Side Print Modal */}
-      {isPrintFinanceModalOpen && selectedProjectForFinancePrint && (
+      {/* 5b. Budget & Realised Side-by-Side Print Modal (fiche unique ou groupée) */}
+      {isPrintFinanceModalOpen && selectedProjectsForFinancePrint.length > 0 && (
         <BudgetRealisePrintModal
           isOpen={isPrintFinanceModalOpen}
-          onClose={() => { setIsPrintFinanceModalOpen(false); setSelectedProjectForFinancePrint(null); }}
-          project={selectedProjectForFinancePrint}
-          budget={budgets.find(b => b.projetId === selectedProjectForFinancePrint.id) || { id: "", projetId: selectedProjectForFinancePrint.id, poidsVendu: selectedProjectForFinancePrint.poidsTotal, budgetFourniture: 0, budgetMainOeuvre: 0, budgetSousTraitance: 0, fraisGenerauxPct: 10 }}
-          realise={realises.find(r => r.projetId === selectedProjectForFinancePrint.id) || { id: "", projetId: selectedProjectForFinancePrint.id, poidsFabrique: 0, achatsFournitureRealise: 0, achatsMainOeuvreRealise: 0, achatsSousTraitanceRealise: 0, fraisGenerauxPct: 10 }}
-          client={clients.find(c => c.id === selectedProjectForFinancePrint.clientId)}
-          subcontractor={subcontractors.find(s => s.id === selectedProjectForFinancePrint.sousTraitantId)}
+          onClose={() => { setIsPrintFinanceModalOpen(false); setSelectedProjectsForFinancePrint([]); setSelectedZoneIdsForGroupPrint(new Set()); }}
+          projects={selectedProjectsForFinancePrint}
+          budgets={selectedProjectsForFinancePrint.map(sp =>
+            budgets.find(b => b.projetId === sp.id) || { id: "", projetId: sp.id, poidsVendu: sp.poidsTotal, budgetFourniture: 0, budgetMainOeuvre: 0, budgetSousTraitance: 0, fraisGenerauxPct: 10 }
+          )}
+          realises={selectedProjectsForFinancePrint.map(sp =>
+            realises.find(r => r.projetId === sp.id) || { id: "", projetId: sp.id, poidsFabrique: 0, achatsFournitureRealise: 0, achatsMainOeuvreRealise: 0, achatsSousTraitanceRealise: 0, fraisGenerauxPct: 10 }
+          )}
+          client={clients.find(c => c.id === selectedProjectsForFinancePrint[0].clientId)}
+          subcontractor={subcontractors.find(s => s.id === selectedProjectsForFinancePrint[0].sousTraitantId)}
           user={user}
         />
       )}
@@ -2663,7 +2766,7 @@ export default function App() {
 
       {/* Footer copyright */}
       <footer className="bg-white border-t border-gray-200 py-4 text-center text-xs text-gray-400 mt-12 print:hidden font-mono">
-        © {new Date().getFullYear()} FlowFab v3.1.4 • Système sécurisé de pilotage de production.
+        © {new Date().getFullYear()} FlowFab v3.2.0 • Système sécurisé de pilotage de production.
       </footer>
 
     </div>

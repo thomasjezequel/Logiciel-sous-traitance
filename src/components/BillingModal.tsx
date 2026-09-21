@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Billing, Project, Client, Subcontractor, BillingStatus, BillingUnit } from "../types";
+import { Billing, Project, Client, Subcontractor, BillingStatus, BillingUnit, ProjectStatus } from "../types";
 import { X, Save, AlertTriangle, Link } from "lucide-react";
 
 interface BillingModalProps {
@@ -58,8 +58,14 @@ export default function BillingModal({
     }
   });
 
-  // Projects that do not have any other billing yet
-  const availableProjects = projects.filter(p => !projectsWithOtherBillingsStr.has(p.id));
+  // Projects that do not have any other billing yet, ET qui sont à l'état "Terminée"
+  // (on ne facture qu'une affaire dont la fabrication est achevée). On garde toutefois
+  // toujours visible l'affaire déjà liée à cette facture en cas d'édition, même si son
+  // statut a changé depuis, pour ne pas casser l'affichage du formulaire.
+  const availableProjects = projects.filter(p =>
+    !projectsWithOtherBillingsStr.has(p.id) &&
+    (p.status === ProjectStatus.TERMINEE || p.id === billing?.projetId)
+  );
 
   // Sorted alphabetically by Affaire (puis Zone) pour la liste déroulante
   const sortedAvailableProjects = [...availableProjects].sort((a, b) => {

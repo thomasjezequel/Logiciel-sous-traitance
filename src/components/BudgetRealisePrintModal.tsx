@@ -6,9 +6,9 @@ import flowfabLogo from "../assets/images/flowfab_logo_1780546723025.png";
 interface BudgetRealisePrintModalProps {
   isOpen: boolean;
   onClose: () => void;
-  project: Project;
-  budget: Budget;
-  realise: Realise;
+  projects: Project[];
+  budgets: Budget[];
+  realises: Realise[];
   client: Client | undefined;
   subcontractor: Subcontractor | undefined;
   user?: any;
@@ -17,16 +17,87 @@ interface BudgetRealisePrintModalProps {
 export default function BudgetRealisePrintModal({
   isOpen,
   onClose,
-  project,
-  budget,
-  realise,
+  projects,
+  budgets,
+  realises,
   client,
   subcontractor,
   user
 }: BudgetRealisePrintModalProps) {
   const printAreaRef = useRef<HTMLDivElement>(null);
 
-  if (!isOpen) return null;
+  if (!isOpen || projects.length === 0) return null;
+
+  const isGrouped = projects.length > 1;
+  const mainProject = projects[0];
+
+  // Somme d'un champ numérique optionnel sur tous les budgets ou réalisés du groupe
+  const sum = (arr: number[]) => arr.reduce((acc, v) => acc + (v || 0), 0);
+
+  // Agrégation Budget : simple somme de chaque poste sur toutes les zones sélectionnées.
+  // Le taux de Frais Généraux ne peut pas être additionné (c'est un %) : on recalcule un
+  // taux "effectif" à partir de la somme réelle des FG en euros, pour que le montant final
+  // affiché reste exact même si les zones ont des taux de FG différents.
+  const bFournitureSum = sum(budgets.map(b => b.budgetFourniture || 0));
+  const bMOSum = sum(budgets.map(b => b.budgetMainOeuvre || 0));
+  const bSTSum = sum(budgets.map(b => b.budgetSousTraitance || 0));
+  const bSousTotalAvantFG = bFournitureSum + bMOSum + bSTSum;
+  const bFGEurosSum = sum(budgets.map(b => {
+    const s = (b.budgetFourniture || 0) + (b.budgetMainOeuvre || 0) + (b.budgetSousTraitance || 0);
+    return s * ((b.fraisGenerauxPct || 0) / 100);
+  }));
+  const budget: Budget = {
+    id: "agg-budget",
+    projetId: "agg",
+    poidsVendu: sum(budgets.map((b, i) => b.poidsVendu || projects[i]?.poidsTotal || 0)),
+    budgetFourniture: bFournitureSum,
+    budgetMainOeuvre: bMOSum,
+    budgetSousTraitance: bSTSum,
+    budgetAciers: sum(budgets.map(b => b.budgetAciers || 0)),
+    budgetPeinture: sum(budgets.map(b => b.budgetPeinture || 0)),
+    budgetDivers: sum(budgets.map(b => b.budgetDivers || 0)),
+    budgetTransport: sum(budgets.map(b => b.budgetTransport || 0)),
+    budgetProtection: sum(budgets.map(b => b.budgetProtection || 0)),
+    budgetHeuresMO: sum(budgets.map(b => b.budgetHeuresMO || 0)),
+    fraisGenerauxPct: bSousTotalAvantFG > 0 ? (bFGEurosSum / bSousTotalAvantFG) * 100 : 0
+  };
+
+  const rFournitureSum = sum(realises.map(r => r.achatsFournitureRealise || 0));
+  const rMOSum = sum(realises.map(r => r.achatsMainOeuvreRealise || 0));
+  const rSTSum = sum(realises.map(r => r.achatsSousTraitanceRealise || 0));
+  const rSousTotalAvantFG = rFournitureSum + rMOSum + rSTSum;
+  const rFGEurosSum = sum(realises.map(r => {
+    const s = (r.achatsFournitureRealise || 0) + (r.achatsMainOeuvreRealise || 0) + (r.achatsSousTraitanceRealise || 0);
+    return s * ((r.fraisGenerauxPct || 0) / 100);
+  }));
+  const realise: Realise = {
+    id: "agg-realise",
+    projetId: "agg",
+    poidsFabrique: sum(realises.map((r, i) => r.poidsFabrique || projects[i]?.poidsTotal || 0)),
+    achatsFournitureRealise: rFournitureSum,
+    achatsMainOeuvreRealise: rMOSum,
+    achatsSousTraitanceRealise: rSTSum,
+    achatsAciersRealise: sum(realises.map(r => r.achatsAciersRealise || 0)),
+    achatsPeintureRealise: sum(realises.map(r => r.achatsPeintureRealise || 0)),
+    achatsDiversRealise: sum(realises.map(r => r.achatsDiversRealise || 0)),
+    achatsTransportRealise: sum(realises.map(r => r.achatsTransportRealise || 0)),
+    achatsProtectionRealise: sum(realises.map(r => r.achatsProtectionRealise || 0)),
+    achatsHeuresMO: sum(realises.map(r => r.achatsHeuresMO || 0)),
+    fraisGenerauxPct: rSousTotalAvantFG > 0 ? (rFGEurosSum / rSousTotalAvantFG) * 100 : 0,
+    ...({
+      poidsUtilise: sum(realises.map(r => (r as any).poidsUtilise || 0)),
+      poidsSousTraite: sum(realises.map(r => (r as any).poidsSousTraite || 0))
+    } as any)
+  };
+
+  // Objet "projet" utilisé pour l'affichage des références : reprend les infos de la
+  // première zone (affaire, client, sous-traitant, N° commande — communs au groupe),
+  // mais additionne le poids total et concatène les noms de zone.
+  const project: Project = {
+    ...mainProject,
+    nomZone: projects.map(p => p.nomZone).join(", "),
+    poidsTotal: sum(projects.map(p => p.poidsTotal || 0))
+  };
 
   const handlePrint = () => {
     const printContent = printAreaRef.current?.innerHTML;
@@ -176,6 +247,16 @@ export default function BudgetRealisePrintModal({
               <p className="text-[9px] text-gray-400">Rôle : {user?.role || "Administrateur"}</p>
             </div>
           </div>
+
+          {/* Bandeau "fiche groupée" — visible uniquement si plusieurs zones sont combinées */}
+          {isGrouped && (
+            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-xs text-indigo-900 print:bg-slate-50 print:border-slate-300">
+              <span className="font-bold uppercase tracking-wider block mb-1">📎 Fiche groupée — {projects.length} zones combinées</span>
+              <span>
+                {projects.map(p => p.nomZone).join(" · ")} — les montants ci-dessous sont la <strong>somme</strong> des {projects.length} zones (même N° de commande, client et sous-traitant).
+              </span>
+            </div>
+          )}
 
           {/* Upper Info Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-6">

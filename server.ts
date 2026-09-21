@@ -641,6 +641,20 @@ function hasAnyRestriction(user: User): boolean {
   return hasProjectLimit || hasClientLimit;
 }
 
+// Une société autorisée en tant que Client peut aussi être enregistrée comme Sous-traitant
+// sur d'autres affaires (même entreprise, mais présente séparément dans les deux annuaires).
+// On la retrouve alors par correspondance de nom (insensible à la casse et aux espaces).
+function getAllowedSubcontractorIdsByClientMatch(user: User): string[] {
+  const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+  if (!hasClientLimit) return [];
+  const allowedClientNames = user.allowedClientIds!
+    .map(id => db.clients.find(c => c.id === id)?.nom?.trim().toLowerCase())
+    .filter((n): n is string => !!n);
+  return db.subcontractors
+    .filter(s => allowedClientNames.includes(s.nom.trim().toLowerCase()))
+    .map(s => s.id);
+}
+
 // L'utilisateur a-t-il le droit de voir/modifier ce projet précis ?
 function userCanAccessProject(user: User, project: Project | undefined | null): boolean {
   if (!project) return false;
@@ -650,7 +664,8 @@ function userCanAccessProject(user: User, project: Project | undefined | null): 
   const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
   const isProjectAllowed = hasProjectLimit && user.allowedProjectIds!.includes(project.id);
   const isClientAllowed = hasClientLimit && user.allowedClientIds!.includes(project.clientId);
-  return isProjectAllowed || isClientAllowed;
+  const isSubcontractorAllowed = hasClientLimit && getAllowedSubcontractorIdsByClientMatch(user).includes(project.sousTraitantId);
+  return isProjectAllowed || isClientAllowed || isSubcontractorAllowed;
 }
 
 // L'utilisateur a-t-il le droit de voir/modifier ce client précis ?

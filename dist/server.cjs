@@ -522,6 +522,12 @@ function hasAnyRestriction(user) {
   const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
   return hasProjectLimit || hasClientLimit;
 }
+function getAllowedSubcontractorIdsByClientMatch(user) {
+  const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
+  if (!hasClientLimit) return [];
+  const allowedClientNames = user.allowedClientIds.map((id) => db.clients.find((c) => c.id === id)?.nom?.trim().toLowerCase()).filter((n) => !!n);
+  return db.subcontractors.filter((s) => allowedClientNames.includes(s.nom.trim().toLowerCase())).map((s) => s.id);
+}
 function userCanAccessProject(user, project) {
   if (!project) return false;
   if (user.role === "Administrateur" /* ADMIN */) return true;
@@ -530,7 +536,8 @@ function userCanAccessProject(user, project) {
   const hasClientLimit = Array.isArray(user.allowedClientIds) && user.allowedClientIds.length > 0;
   const isProjectAllowed = hasProjectLimit && user.allowedProjectIds.includes(project.id);
   const isClientAllowed = hasClientLimit && user.allowedClientIds.includes(project.clientId);
-  return isProjectAllowed || isClientAllowed;
+  const isSubcontractorAllowed = hasClientLimit && getAllowedSubcontractorIdsByClientMatch(user).includes(project.sousTraitantId);
+  return isProjectAllowed || isClientAllowed || isSubcontractorAllowed;
 }
 function userCanAccessClient(user, clientId) {
   if (!clientId) return false;
